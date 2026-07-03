@@ -8,20 +8,16 @@ services:
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=proxy
       - --entryPoints.web.address=:80
-      # Panel de Traefik (opcional, inseguro): descomenta estas dos lineas y el
-      # puerto 8081 de abajo para verlo en http://IP:8081
-      # - --api.dashboard=true
-      # - --api.insecure=true
+    environment:
+      # Pasamos la versión de la API directamente como variable nativa del contenedor
+      - DOCKER_API_VERSION=1.40
     ports:
       - "${PROXY_HTTP_PORT:-80}:80"
-      # - "8081:8080"   # panel de Traefik (opcional)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - proxy
 
-# Red compartida por el proxy y todas las apps. Se crea una sola vez en el NAS:
-#   docker network create proxy
 networks:
   proxy:
     external: true
