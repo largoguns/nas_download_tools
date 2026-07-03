@@ -3,13 +3,12 @@ services:
     build: .
     container_name: launcher
     restart: unless-stopped
-    # Sin puerto publicado: se sirve en la raiz "/" a traves del proxy (Traefik).
     environment:
       PORT: 8000
-      CONFIG_PATH: ${CONFIG_PATH:-/app/config.json}
-    # Para editar la lista de apps sin reconstruir la imagen, monta tu config.json:
-    # volumes:
-    #   - ./config.json:/app/config.json:ro
+      CONFIG_PATH: /app/config.json # Dejamos la ruta fija dentro del contenedor
+    volumes:
+      # Esta línea es la magia: mapea de forma dinámica el archivo externo usando una variable
+      - ${LAUNCHER_CONFIG_FILE:-./config.json}:/app/config.json:ro
     networks:
       - proxy
     labels:
