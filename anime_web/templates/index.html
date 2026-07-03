@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AnimeDownloader</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f8;
+      --surface: #ffffff;
+      --text: #17202a;
+      --muted: #667085;
+      --line: #d8dee8;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --accent-soft: rgba(15, 118, 110, 0.12);
+      --blue: #1d4ed8;
+      --red: #b42318;
+      --amber: #a15c07;
+      --violet: #6d28d9;
+      --green: #16794c;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+    h1 { font-size: clamp(1.3rem, 3.4vw, 1.8rem); }
+    h2 { font-size: 1rem; }
+    h3 { font-size: 0.98rem; }
+    .muted { color: var(--muted); }
+    .small { font-size: 0.88rem; }
+
+    /* ---------------- Layout con barra lateral ---------------- */
+    .app { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 224px;
+      flex: none;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .brand { padding: 6px 10px 14px; }
+    .brand strong { font-size: 1.05rem; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      font: inherit;
+      font-weight: 750;
+      cursor: pointer;
+      min-height: 44px;
+    }
+
+    .nav-item:hover { background: #eef2f6; }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav-item .nav-ico { font-size: 1.1rem; line-height: 1; }
+    .nav-item .nav-label { flex: 1 1 auto; }
+
+    .nav-badge {
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--blue);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav-badge.show { display: inline-flex; }
+
+    .content {
+      flex: 1 1 auto;
+      min-width: 0;
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: clamp(12px, 2.6vw, 24px);
+    }
+
+    .content-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .view[hidden] { display: none; }
+    .stack { display: grid; gap: 16px; }
+
+    /* ---------------- Componentes base ---------------- */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: clamp(12px, 2.4vw, 16px);
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    input, select, textarea, button {
+      min-height: 42px;
+      border-radius: 6px;
+      font: inherit;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      padding: 0 10px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    textarea { min-height: 92px; padding: 10px; resize: vertical; }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      outline: 3px solid var(--accent-soft);
+    }
+
+    button {
+      border: 0;
+      padding: 0 14px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    button:hover { background: var(--accent-strong); }
+    button:disabled { cursor: not-allowed; opacity: 0.58; }
+
+    .ghost { border: 1px solid var(--line); background: #fff; color: var(--text); }
+    .ghost:hover { background: #eef2f6; }
+    .danger { background: var(--red); }
+    .danger:hover { background: #912018; }
+
+    .toolbar { display: grid; gap: 10px; grid-template-columns: 1fr; align-items: end; }
+    .result-list, .episode-list, .queue-list, .tracking-list { display: grid; gap: 8px; }
+
+    .episode-toolbar {
+      display: flex; justify-content: space-between; gap: 10px;
+      align-items: center; flex-wrap: wrap; margin-top: 12px;
+    }
+
+    .pager {
+      display: inline-flex; gap: 8px; align-items: center;
+      color: var(--muted); font-size: 0.88rem; font-weight: 700;
+    }
+
+    .direct-grid, .direct-batch { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: end; margin-top: 12px; }
+    .direct-grid { padding-top: 14px; border-top: 1px solid var(--line); }
+
+    .source-mode {
+      margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line);
+      border-radius: var(--radius); background: #f9fbfb; color: var(--muted);
+      font-size: 0.88rem; font-weight: 600;
+    }
+
+    .layout { display: grid; gap: 16px; grid-template-columns: 1fr; align-items: start; }
+
+    .row {
+      display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px;
+      align-items: center; border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 9px; background: #fff;
+    }
+    .row.compact { grid-template-columns: minmax(0, 1fr) auto; }
+
+    .cover {
+      width: 64px; height: 64px; border-radius: 6px; border: 1px solid var(--line);
+      background: #eef2f6; object-fit: cover;
+    }
+    .cover-placeholder { display: grid; place-items: center; color: var(--muted); font-weight: 800; }
+
+    .title { font-weight: 800; overflow-wrap: anywhere; }
+    .meta { margin-top: 3px; color: var(--muted); font-size: 0.88rem; overflow-wrap: anywhere; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; color: var(--muted); font-size: 0.76rem; font-weight: 700; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+    .actions button { min-height: 36px; padding: 0 12px; font-size: 0.82rem; }
+
+    /* Cola */
+    .queue-item { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; }
+    .queue-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; align-items: center; }
+    .bar { height: 3px; background: #e6ebf2; }
+    .bar > span { display: block; height: 100%; width: 0%; background: var(--blue); }
+    .queue-details { display: grid; gap: 6px; padding: 0 12px 12px; background: #fbfcfd; }
+    .queue-subitem { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding-top: 8px; }
+    .subitem-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+    button.small { min-height: 30px; padding: 2px 10px; font-size: 0.74rem; }
+
+    /* Seguimiento */
+    .track-card {
+      border: 1px solid var(--line); border-radius: var(--radius); background: #fff;
+      padding: 10px; display: grid; grid-template-columns: 56px minmax(0, 1fr) auto;
+      gap: 12px; align-items: center;
+    }
+    .track-card.has-new { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+    .new-pill {
+      display: inline-flex; align-items: center; gap: 4px; border-radius: 999px;
+      padding: 2px 9px; background: var(--blue); color: #fff; font-size: 0.74rem; font-weight: 850;
+    }
+
+    .status {
+      display: inline-flex; align-items: center; min-height: 24px; border-radius: 999px;
+      padding: 0 8px; background: #eef2f6; color: var(--muted); font-size: 0.75rem; font-weight: 850;
+    }
+    .status.PENDING { color: var(--amber); }
+    .status.DOWNLOADING { color: var(--blue); }
+    .status.COMPLETED { color: var(--green); }
+    .status.FAILED { color: var(--red); }
+    .status.PAUSED { color: var(--violet); }
+    .status.CANCELED { color: var(--muted); }
+
+    .message { min-height: 22px; margin-top: 10px; color: var(--muted); font-size: 0.92rem; }
+    .message.error { color: var(--red); }
+
+    .empty { border: 1px dashed var(--line); border-radius: var(--radius); padding: 18px; color: var(--muted); background: #fff; text-align: center; }
+
+    /* ---------------- Responsive ---------------- */
+    @media (min-width: 640px) {
+      .toolbar { grid-template-columns: minmax(160px, 220px) minmax(0, 1fr) auto auto; }
+      .direct-batch { grid-template-columns: minmax(0, 1fr) auto; }
+    }
+    @media (min-width: 760px) {
+      .direct-grid {
+        grid-template-columns:
+          minmax(140px, 0.7fr) minmax(140px, 0.9fr) minmax(80px, 0.35fr) minmax(200px, 1.3fr) auto;
+      }
+    }
+    @media (min-width: 1000px) {
+      .layout { grid-template-columns: minmax(0, 1fr) minmax(360px, 0.8fr); }
+    }
+
+    /* Boton volver solo en pantallas estrechas (las dos columnas ya no caben) */
+    .back-btn { display: none; }
+
+    @media (max-width: 999px) {
+      /* Pseudo-navegacion: lista <-> detalle, sin recargar la lista */
+      #view-buscar .detail-pane { display: none; }
+      #view-buscar.detail-open .search-pane,
+      #view-buscar.detail-open .catalog-pane { display: none; }
+      #view-buscar.detail-open .detail-pane { display: block; }
+      #view-buscar.detail-open .back-btn { display: inline-flex; }
+    }
+
+    /* Movil: barra lateral pasa a navegacion inferior */
+    @media (max-width: 820px) {
+      .app { flex-direction: column; }
+      .sidebar {
+        position: fixed; bottom: 0; left: 0; right: 0; top: auto;
+        width: auto; height: auto; flex-direction: row; gap: 4px;
+        border-right: 0; border-top: 1px solid var(--line);
+        padding: 6px; z-index: 60; box-shadow: 0 -2px 8px rgba(16,24,40,.06);
+      }
+      .brand { display: none; }
+      .nav-item { flex-direction: column; gap: 2px; font-size: 0.72rem; padding: 6px 2px; justify-content: center; text-align: center; min-height: 52px; }
+      .nav-item .nav-ico { font-size: 1.25rem; }
+      .nav-badge { position: absolute; transform: translate(14px, -10px); }
+      .nav-item { position: relative; }
+      .content { width: 100%; padding-bottom: 78px; }
+    }
+
+    @media (max-width: 560px) {
+      .row { grid-template-columns: 52px minmax(0, 1fr); }
+      .row > .actions { grid-column: 1 / -1; justify-content: flex-start; }
+      .cover { width: 52px; height: 52px; }
+      .queue-main { grid-template-columns: 1fr; }
+      .queue-main .actions { justify-content: flex-start; }
+      .track-card { grid-template-columns: 48px minmax(0, 1fr); }
+      .track-card .actions { grid-column: 1 / -1; justify-content: flex-start; }
+      .actions { width: 100%; }
+      .actions button { flex: 1 1 auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>AnimeDownloader</strong>
+        <div class="muted small">Fuentes extensibles</div>
+      </div>
+      <button class="nav-item active" type="button" data-view="buscar">
+        <span class="nav-ico">&#128269;</span><span class="nav-label">Buscar</span>
+      </button>
+      <button class="nav-item" type="button" data-view="seguimiento">
+        <span class="nav-ico">&#128278;</span><span class="nav-label">Seguimiento</span>
+        <span id="trackBadge" class="nav-badge">0</span>
+      </button>
+      <button class="nav-item" type="button" data-view="descargas">
+        <span class="nav-ico">&#11015;</span><span class="nav-label">Descargas</span>
+        <span id="queueBadge" class="nav-badge">0</span>
+      </button>
+    </aside>
+
+    <main class="content">
+      <div class="content-head">
+        <h1 id="viewTitle">Buscar</h1>
+        <span id="sourceCount" class="status">Cargando</span>
+      </div>
+
+      <!-- ===================== BUSCAR ===================== -->
+      <section id="view-buscar" class="view stack">
+        <div class="panel search-pane">
+          <div class="toolbar">
+            <div>
+              <label for="sourceSelect">Fuente</label>
+              <select id="sourceSelect"></select>
+            </div>
+            <div>
+              <label for="searchInput">Busqueda</label>
+              <input id="searchInput" type="search" placeholder="Titulo">
+            </div>
+            <button id="searchButton" type="button">Buscar</button>
+            <button id="popularButton" class="ghost" type="button">Popular</button>
+          </div>
+          <div id="sourceMode" class="source-mode"></div>
+          <div id="directPanel">
+            <div class="direct-grid">
+              <div>
+                <label for="directAnimeTitle">Anime</label>
+                <input id="directAnimeTitle" type="text" placeholder="Titulo">
+              </div>
+              <div>
+                <label for="directEpisodeTitle">Capitulo</label>
+                <input id="directEpisodeTitle" type="text" placeholder="Episodio 1">
+              </div>
+              <div>
+                <label for="directEpisodeNumber">N.</label>
+                <input id="directEpisodeNumber" type="number" min="0" step="0.01" placeholder="1">
+              </div>
+              <div>
+                <label for="directVideoUrl">URL directa</label>
+                <input id="directVideoUrl" type="url" placeholder="https://...">
+              </div>
+              <button id="directEpisodeButton" type="button">Encolar</button>
+            </div>
+            <div class="direct-batch">
+              <div>
+                <label for="directBatch">Lote</label>
+                <textarea id="directBatch" placeholder="1 | Episodio 1 | https://..."></textarea>
+              </div>
+              <button id="directBatchButton" type="button">Encolar lote</button>
+            </div>
+          </div>
+          <div id="message" class="message"></div>
+        </div>
+
+        <div class="layout">
+          <div class="panel catalog-pane">
+            <div class="panel-head">
+              <h2>Catalogo</h2>
+              <button id="latestButton" class="ghost" type="button">Recientes</button>
+            </div>
+            <div id="results" class="result-list"></div>
+          </div>
+
+          <div class="panel detail-pane">
+            <div class="panel-head">
+              <h2>Episodios</h2>
+              <div class="actions">
+                <span id="selectedSource" class="muted small"></span>
+                <button id="backButton" class="ghost back-btn" type="button">&#8592; Volver</button>
+              </div>
+            </div>
+            <div id="animeDetails"></div>
+            <div id="episodeToolbar" class="episode-toolbar" hidden>
+              <div class="actions">
+                <button id="downloadAnimeButton" type="button">Descargar anime</button>
+                <button id="followButton" class="ghost" type="button">Seguir</button>
+              </div>
+              <div class="pager">
+                <button id="prevEpisodePage" class="ghost" type="button">Anterior</button>
+                <span id="episodePageLabel">Pagina 1</span>
+                <button id="nextEpisodePage" class="ghost" type="button">Siguiente</button>
+              </div>
+            </div>
+            <div id="episodes" class="episode-list" style="margin-top: 12px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== SEGUIMIENTO ===================== -->
+      <section id="view-seguimiento" class="view stack" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Animes en seguimiento</h2>
+            <div class="actions">
+              <span id="trackingUpdated" class="muted small"></span>
+              <button id="trackRefreshButton" class="ghost" type="button">Comprobar</button>
+            </div>
+          </div>
+          <div id="trackMessage" class="message"></div>
+          <div id="trackingList" class="tracking-list"></div>
+        </div>
+      </section>
+
+      <!-- ===================== DESCARGAS ===================== -->
+      <section id="view-descargas" class="view stack" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Cola de descargas</h2>
+            <span id="queueUpdated" class="muted small"></span>
+          </div>
+          <div id="queue" class="queue-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      sources: [],
+      activeSource: null,
+      selectedAnime: null,
+      currentEpisodes: [],
+      episodePage: 1,
+      episodeHasNext: false,
+      expandedJobs: new Set(),
+    };
+
+    const VIEWS = ["buscar", "seguimiento", "descargas"];
+    const VIEW_TITLES = { buscar: "Buscar", seguimiento: "Seguimiento", descargas: "Descargas" };
+
+    const $ = (id) => document.getElementById(id);
+
+    function setMessage(text, isError = false) {
+      $("message").textContent = text || "";
+      $("message").classList.toggle("error", isError);
+    }
+
+    function setTrackMessage(text, isError = false) {
+      $("trackMessage").textContent = text || "";
+      $("trackMessage").classList.toggle("error", isError);
+    }
+
+    // Prefijo publico bajo el proxy (p. ej. "/anime"); vacio en acceso directo.
+    const API_BASE = "{{ base_path }}";
+    async function api(path, options = {}) {
+      const response = await fetch(API_BASE + path, options);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error || "Error de servidor");
+      }
+      return data;
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replaceAll("`", "&#096;");
+    }
+
+    function sourceById(id) {
+      return state.sources.find((source) => source.id === id);
+    }
+
+    function currentSource() {
+      return sourceById($("sourceSelect").value);
+    }
+
+    function isDirectSource(source) {
+      return Boolean(source && source.id === "direct");
+    }
+
+    /* ---------------- Navegacion entre vistas ---------------- */
+    function showView(name) {
+      if (!VIEWS.includes(name)) name = "buscar";
+      VIEWS.forEach((view) => { $("view-" + view).hidden = view !== name; });
+      document.querySelectorAll(".nav-item").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.view === name);
+      });
+      $("viewTitle").textContent = VIEW_TITLES[name];
+      localStorage.setItem("activeView", name);
+      if (name === "descargas") loadQueue().catch(() => {});
+      if (name === "seguimiento") {
+        loadTracking()
+          .then(() => refreshTracking().catch(() => {}))
+          .catch(() => {});
+      }
+    }
+
+    function updateSourceMode() {
+      const source = currentSource();
+      const direct = isDirectSource(source);
+      $("directPanel").hidden = !direct;
+      $("popularButton").disabled = direct;
+      $("latestButton").disabled = !source || !source.capabilities || !source.capabilities.latest;
+      $("searchInput").placeholder = direct ? "No aplica a URL directa" : "Titulo";
+
+      if (!source) {
+        $("sourceMode").textContent = "Selecciona una fuente para cargar el catalogo o preparar una descarga directa.";
+        return;
+      }
+      if (direct) {
+        $("sourceMode").textContent = "Modo directo: usa este panel para encolar MP4 o HLS autorizados de forma manual.";
+        return;
+      }
+      $("sourceMode").textContent = `${source.name}: catalogo, busqueda y listado de episodios desde la interfaz.`;
+    }
+
+    function coverNode(item) {
+      if (item.thumbnail_url) {
+        return `<img class="cover" src="${escapeAttr(item.thumbnail_url)}" alt="">`;
+      }
+      return `<div class="cover cover-placeholder">TV</div>`;
+    }
+
+    function renderResults(items) {
+      // Una lista nueva vuelve al modo lista (en movil oculta el detalle).
+      $("view-buscar").classList.remove("detail-open");
+      const target = $("results");
+      if (!items.length) {
+        target.innerHTML = `<div class="empty">Sin resultados</div>`;
+        return;
+      }
+      target.innerHTML = items.map((item, index) => `
+        <article class="row">
+          ${coverNode(item)}
+          <div>
+            <div class="title">${escapeHtml(item.title)}</div>
+            <div class="meta">${escapeHtml(item.status || item.description || item.url)}</div>
+            <div class="chips">
+              ${(item.genres || []).slice(0, 4).map((genre) => `<span class="chip">${escapeHtml(genre)}</span>`).join("")}
+            </div>
+          </div>
+          <div class="actions">
+            <button class="ghost" type="button" data-open="${index}">Abrir</button>
+          </div>
+        </article>
+      `).join("");
+      target.querySelectorAll("[data-open]").forEach((button) => {
+        button.addEventListener("click", () => openAnime(items[Number(button.dataset.open)]));
+      });
+    }
+
+    function renderDetails(item) {
+      $("animeDetails").innerHTML = item ? `
+        <article class="row">
+          ${coverNode(item)}
+          <div>
+            <div class="title">${escapeHtml(item.title)}</div>
+            <div class="meta">${escapeHtml(item.description || item.url)}</div>
+          </div>
+        </article>
+      ` : `<div class="empty">Selecciona una serie</div>`;
+    }
+
+    function renderEpisodes(episodes) {
+      const source = currentSource();
+      const canDownload = source && source.capabilities && source.capabilities.downloads;
+      const target = $("episodes");
+      state.currentEpisodes = episodes;
+      if (!episodes.length) {
+        target.innerHTML = `<div class="empty">Sin episodios</div>`;
+        return;
+      }
+      target.innerHTML = episodes.map((episode, index) => `
+        <article class="row compact">
+          <div>
+            <div class="title">${escapeHtml(episode.title)}</div>
+            <div class="meta">${escapeHtml(episode.uploaded_at || episode.url)}</div>
+          </div>
+          <div class="actions">
+            <button type="button" data-download="${index}" ${canDownload ? "" : "disabled"}>${canDownload ? "Descargar" : "Solo listado"}</button>
+          </div>
+        </article>
+      `).join("");
+      target.querySelectorAll("[data-download]").forEach((button) => {
+        button.addEventListener("click", () => enqueueEpisode(episodes[Number(button.dataset.download)]));
+      });
+    }
+
+    async function loadSources() {
+      const data = await api("/api/sources");
+      state.sources = data.sources || [];
+      $("sourceCount").textContent = `${state.sources.length} fuente${state.sources.length === 1 ? "" : "s"}`;
+      const options = state.sources.map((source) => (
+        `<option value="${escapeAttr(source.id)}">${escapeHtml(source.name)}</option>`
+      )).join("");
+      $("sourceSelect").innerHTML = options;
+      if (state.sources.length) {
+        const preferred = sourceById("jkanime") || state.sources[0];
+        state.activeSource = preferred.id;
+        $("sourceSelect").value = preferred.id;
+        $("selectedSource").textContent = preferred.name;
+        updateSourceMode();
+        await loadPopular();
+      } else {
+        renderResults([]);
+        setMessage("No hay fuentes cargadas", true);
+      }
+    }
+
+    async function loadPopular() {
+      const source = currentSource();
+      if (!source) return;
+      if (isDirectSource(source)) {
+        renderResults([]);
+        setMessage("La fuente directa no tiene catalogo.");
+        return;
+      }
+      setMessage("Cargando catalogo...");
+      const data = await api(`/api/popular?source=${encodeURIComponent(source.id)}`);
+      renderResults(data.items || []);
+      setMessage("");
+    }
+
+    async function loadLatest() {
+      const source = currentSource();
+      if (!source) return;
+      if (!source.capabilities || !source.capabilities.latest) {
+        setMessage("Esta fuente no ofrece recientes.");
+        return;
+      }
+      setMessage("Cargando recientes...");
+      const data = await api(`/api/latest?source=${encodeURIComponent(source.id)}`);
+      renderResults(data.items || []);
+      setMessage("");
+    }
+
+    async function search() {
+      const source = currentSource();
+      if (!source) return;
+      if (isDirectSource(source)) {
+        renderResults([]);
+        setMessage("Usa el panel de URL directa para esta fuente.");
+        return;
+      }
+      const q = $("searchInput").value.trim();
+      setMessage("Buscando...");
+      const data = await api(`/api/search?source=${encodeURIComponent(source.id)}&q=${encodeURIComponent(q)}`);
+      renderResults(data.items || []);
+      setMessage("");
+    }
+
+    async function openAnime(item) {
+      const source = currentSource();
+      state.selectedAnime = item;
+      state.episodePage = 1;
+      state.episodeHasNext = false;
+      $("selectedSource").textContent = source ? source.name : "";
+      $("view-buscar").classList.add("detail-open");  // en movil, abre el detalle
+      renderDetails(item);
+      updateEpisodeToolbar();
+      $("episodes").innerHTML = `<div class="empty">Cargando episodios</div>`;
+      await loadEpisodePage(1);
+    }
+
+    async function loadEpisodePage(page) {
+      const source = currentSource();
+      const anime = state.selectedAnime;
+      if (!source || !anime) return;
+      try {
+        const data = await api(`/api/episodes?source=${encodeURIComponent(source.id)}&url=${encodeURIComponent(anime.url)}&page=${page}`);
+        state.episodePage = data.page || page;
+        state.episodeHasNext = Boolean(data.has_next);
+        renderEpisodes(data.episodes || []);
+        updateEpisodeToolbar(data.total);
+      } catch (error) {
+        $("episodes").innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function updateEpisodeToolbar(total) {
+      const source = currentSource();
+      const canDownload = source && source.capabilities && source.capabilities.downloads;
+      $("episodeToolbar").hidden = !state.selectedAnime;
+      $("downloadAnimeButton").disabled = !canDownload || !state.selectedAnime;
+      $("downloadAnimeButton").textContent = canDownload ? "Descargar anime" : "Solo listado";
+      $("followButton").disabled = !state.selectedAnime || isDirectSource(source);
+      $("prevEpisodePage").disabled = state.episodePage <= 1;
+      $("nextEpisodePage").disabled = !state.episodeHasNext;
+      const totalText = total ? ` de ${total}` : "";
+      $("episodePageLabel").textContent = `Pagina ${state.episodePage}${totalText}`;
+    }
+
+    async function enqueueEpisode(episode) {
+      const source = currentSource();
+      const anime = state.selectedAnime;
+      if (!source || !anime) return;
+      await api("/api/downloads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_id: source.id,
+          anime_title: anime.title,
+          anime_url: anime.url,
+          episode_title: episode.title,
+          episode_url: episode.url,
+          episode_number: episode.number,
+        }),
+      });
+      setMessage("Episodio anadido a la cola");
+      await loadQueue();
+    }
+
+    async function enqueueAnime() {
+      const source = currentSource();
+      const anime = state.selectedAnime;
+      if (!source || !anime) return;
+      const data = await api("/api/downloads/anime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_id: source.id,
+          anime_title: anime.title,
+          anime_url: anime.url,
+        }),
+      });
+      setMessage(`Anime anadido a la cola (${data.episodes || 0} capitulos)`);
+      await loadQueue();
+    }
+
+    async function followCurrentAnime() {
+      const source = currentSource();
+      const anime = state.selectedAnime;
+      if (!source || !anime) return;
+      try {
+        await api("/api/tracking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_id: source.id,
+            anime_url: anime.url,
+            anime_title: anime.title,
+          }),
+        });
+        setMessage(`Siguiendo "${anime.title}"`);
+        await loadTracking();
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    }
+
+    function directEpisodeFromInputs() {
+      const animeTitle = $("directAnimeTitle").value.trim();
+      const episodeTitle = $("directEpisodeTitle").value.trim();
+      const url = $("directVideoUrl").value.trim();
+      const rawNumber = $("directEpisodeNumber").value.trim();
+      if (!animeTitle || !episodeTitle || !url) {
+        throw new Error("Completa anime, capitulo y URL directa");
+      }
+      return {
+        animeTitle,
+        episodes: [{ title: episodeTitle, url, number: rawNumber ? Number(rawNumber) : null }],
+      };
+    }
+
+    function directEpisodesFromBatch() {
+      const animeTitle = $("directAnimeTitle").value.trim();
+      const lines = $("directBatch").value.split("\n").map((line) => line.trim()).filter(Boolean);
+      if (!animeTitle || !lines.length) {
+        throw new Error("Completa anime y lote");
+      }
+      const episodes = lines.map((line, index) => {
+        const parts = line.split("|").map((part) => part.trim());
+        if (parts.length >= 3) return { number: Number(parts[0]), title: parts[1], url: parts.slice(2).join("|").trim() };
+        if (parts.length === 2) return { number: index + 1, title: parts[0], url: parts[1] };
+        throw new Error(`Linea de lote no valida: ${line}`);
+      });
+      return { animeTitle, episodes };
+    }
+
+    async function enqueueDirect(payload) {
+      const data = await api("/api/downloads/direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ anime_title: payload.animeTitle, episodes: payload.episodes }),
+      });
+      setMessage(`Descarga directa anadida (${data.episodes || 0} capitulos)`);
+      await loadQueue();
+    }
+
+    /* ---------------- Cola ---------------- */
+    function progressPercent(item) {
+      if (item.progress_total) {
+        return Math.max(0, Math.min(100, Math.round((item.progress_current / item.progress_total) * 100)));
+      }
+      if (!item.total_bytes) return item.status === "COMPLETED" ? 100 : 0;
+      return Math.max(0, Math.min(100, Math.round((item.bytes_downloaded / item.total_bytes) * 100)));
+    }
+
+    function itemBytes(item) {
+      if (item.total_bytes) return `${Math.round(item.bytes_downloaded / 1048576)} / ${Math.round(item.total_bytes / 1048576)} MB`;
+      if (item.bytes_downloaded) return `${Math.round(item.bytes_downloaded / 1048576)} MB`;
+      return "";
+    }
+
+    function updateQueueBadge(downloads) {
+      const active = downloads.filter((job) => ["DOWNLOADING", "PENDING"].includes(job.status)).length;
+      const badge = $("queueBadge");
+      badge.textContent = active;
+      badge.classList.toggle("show", active > 0);
+    }
+
+    function renderQueue(downloads) {
+      const target = $("queue");
+      $("queueUpdated").textContent = new Date().toLocaleTimeString();
+      updateQueueBadge(downloads);
+      if (!downloads.length) {
+        target.innerHTML = `<div class="empty">Cola vacia</div>`;
+        return;
+      }
+      target.innerHTML = downloads.map((item) => {
+        const progress = progressPercent(item);
+        const expanded = state.expandedJobs.has(String(item.id));
+        const completed = item.progress_current || 0;
+        const total = item.progress_total || (item.items ? item.items.length : 0);
+        const detail = expanded ? `
+          <div class="queue-details">
+            ${(item.items || []).map((child) => `
+              <div class="queue-subitem">
+                <div>
+                  <div class="title">${escapeHtml(child.episode_title)}</div>
+                  <div class="meta">${escapeHtml(itemBytes(child) || child.episode_url)}</div>
+                  ${child.download_server ? `<div class="meta">Servidor: ${escapeHtml(child.download_server)}</div>` : ""}
+                  ${child.error ? `<div class="meta">${escapeHtml(child.error)}</div>` : ""}
+                </div>
+                <div class="subitem-actions">
+                  <span class="status ${escapeAttr(child.status)}">${escapeHtml(child.status)}</span>
+                  ${["FAILED", "CANCELED", "PAUSED"].includes(child.status)
+                    ? `<button class="ghost small" type="button" data-item-retry="${child.id}">Reintentar</button>`
+                    : ""}
+                  ${child.status === "COMPLETED"
+                    ? `<button class="ghost small" type="button" data-item-force="${child.id}">Volver a descargar</button>`
+                    : ""}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        ` : "";
+        return `
+          <article class="queue-item">
+            <div class="queue-main">
+              <div>
+                <div class="title">${escapeHtml(item.anime_title)}</div>
+                <div class="meta">${escapeHtml(item.job_type)} &middot; ${completed}/${total} capitulos</div>
+                ${item.error ? `<div class="meta">${escapeHtml(item.error)}</div>` : ""}
+              </div>
+              <div class="actions">
+                <button class="ghost" type="button" data-toggle="${item.id}">${expanded ? "Ocultar" : "Ver"}</button>
+                <span class="status ${escapeAttr(item.status)}">${escapeHtml(item.status)}</span>
+                <button class="ghost" type="button" data-action="pause" data-id="${item.id}">Pausar</button>
+                <button class="ghost" type="button" data-action="resume" data-id="${item.id}">Reanudar</button>
+                <button class="ghost" type="button" data-action="retry" data-id="${item.id}">Reintentar</button>
+                <button class="danger" type="button" data-action="cancel" data-id="${item.id}">Cancelar</button>
+                <button class="ghost" type="button" data-delete="${item.id}">Eliminar</button>
+              </div>
+            </div>
+            <div class="bar"><span style="width: ${progress}%"></span></div>
+            ${detail}
+          </article>
+        `;
+      }).join("");
+      target.querySelectorAll("[data-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const id = String(button.dataset.toggle);
+          if (state.expandedJobs.has(id)) state.expandedJobs.delete(id);
+          else state.expandedJobs.add(id);
+          renderQueue(downloads);
+        });
+      });
+      target.querySelectorAll("[data-action]").forEach((button) => {
+        button.addEventListener("click", () => runDownloadAction(button.dataset.id, button.dataset.action));
+      });
+      target.querySelectorAll("[data-delete]").forEach((button) => {
+        button.addEventListener("click", () => deleteDownload(button.dataset.delete));
+      });
+      target.querySelectorAll("[data-item-retry]").forEach((button) => {
+        button.addEventListener("click", () => retryItem(button.dataset.itemRetry, false));
+      });
+      target.querySelectorAll("[data-item-force]").forEach((button) => {
+        button.addEventListener("click", () => retryItem(button.dataset.itemForce, true));
+      });
+    }
+
+    async function loadQueue() {
+      const data = await api("/api/downloads");
+      renderQueue(data.downloads || []);
+    }
+
+    async function runDownloadAction(id, action) {
+      try { await api(`/api/downloads/${id}/${action}`, { method: "POST" }); await loadQueue(); }
+      catch (error) { setMessage(error.message, true); }
+    }
+
+    async function deleteDownload(id) {
+      try { await api(`/api/downloads/${id}`, { method: "DELETE" }); await loadQueue(); }
+      catch (error) { setMessage(error.message, true); }
+    }
+
+    async function retryItem(itemId, force) {
+      try {
+        const query = force ? "?force=1" : "";
+        await api(`/api/downloads/items/${itemId}/retry${query}`, { method: "POST" });
+        await loadQueue();
+      } catch (error) { setMessage(error.message, true); }
+    }
+
+    /* ---------------- Seguimiento ---------------- */
+    function updateTrackBadge(items) {
+      const total = items.reduce((sum, item) => sum + (item.new_count || 0), 0);
+      const badge = $("trackBadge");
+      badge.textContent = total;
+      badge.classList.toggle("show", total > 0);
+    }
+
+    function renderTracking(items) {
+      updateTrackBadge(items);
+      const target = $("trackingList");
+      if (!items.length) {
+        target.innerHTML = `<div class="empty">No sigues ningun anime todavia</div>`;
+        return;
+      }
+      target.innerHTML = items.map((item) => {
+        const latest = item.latest_number != null ? `Ultimo: ${formatNumber(item.latest_number)}` : `${item.episode_count || 0} episodios`;
+        const newPill = item.new_count > 0 ? `<span class="new-pill">${item.new_count} nuevo${item.new_count === 1 ? "" : "s"}</span>` : "";
+        const sourceName = (sourceById(item.source_id) || {}).name || item.source_id;
+        return `
+          <article class="track-card ${item.new_count > 0 ? "has-new" : ""}">
+            ${coverNode(item)}
+            <div>
+              <div class="title">${escapeHtml(item.anime_title)} ${newPill}</div>
+              <div class="meta">${escapeHtml(sourceName)} &middot; ${escapeHtml(latest)}</div>
+              ${item.error ? `<div class="meta">${escapeHtml(item.error)}</div>` : ""}
+            </div>
+            <div class="actions">
+              <button class="ghost" type="button" data-track-open="${item.id}">Ver</button>
+              ${item.new_count > 0 ? `<button type="button" data-track-download="${item.id}">Descargar nuevos</button>` : ""}
+              ${item.new_count > 0 ? `<button class="ghost" type="button" data-track-seen="${item.id}">Marcar visto</button>` : ""}
+              <button class="ghost" type="button" data-track-del="${item.id}">Dejar de seguir</button>
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      const byId = Object.fromEntries(items.map((item) => [String(item.id), item]));
+      target.querySelectorAll("[data-track-open]").forEach((button) => {
+        button.addEventListener("click", () => openTracked(byId[button.dataset.trackOpen]));
+      });
+      target.querySelectorAll("[data-track-download]").forEach((button) => {
+        button.addEventListener("click", () => trackingAction(button.dataset.trackDownload, "download"));
+      });
+      target.querySelectorAll("[data-track-seen]").forEach((button) => {
+        button.addEventListener("click", () => trackingAction(button.dataset.trackSeen, "seen"));
+      });
+      target.querySelectorAll("[data-track-del]").forEach((button) => {
+        button.addEventListener("click", () => deleteTracking(button.dataset.trackDel));
+      });
+    }
+
+    function formatNumber(value) {
+      return Number.isInteger(value) ? String(value) : String(value);
+    }
+
+    async function loadTracking() {
+      const data = await api("/api/tracking");
+      renderTracking(data.tracking || []);
+    }
+
+    async function refreshTracking() {
+      $("trackingUpdated").textContent = "Comprobando...";
+      try {
+        const data = await api("/api/tracking/refresh", { method: "POST" });
+        renderTracking(data.tracking || []);
+        $("trackingUpdated").textContent = "Comprobado " + new Date().toLocaleTimeString();
+      } catch (error) {
+        $("trackingUpdated").textContent = "Error al comprobar";
+        throw error;
+      }
+    }
+
+    async function trackingAction(id, action) {
+      try {
+        await api(`/api/tracking/${id}/${action}`, { method: "POST" });
+        if (action === "download") {
+          setTrackMessage("Episodios nuevos anadidos a la cola");
+          await loadQueue();
+        }
+        await loadTracking();
+      } catch (error) {
+        setTrackMessage(error.message, true);
+      }
+    }
+
+    async function deleteTracking(id) {
+      try { await api(`/api/tracking/${id}`, { method: "DELETE" }); await loadTracking(); }
+      catch (error) { setTrackMessage(error.message, true); }
+    }
+
+    function openTracked(item) {
+      if (!item) return;
+      const source = sourceById(item.source_id);
+      if (source) {
+        $("sourceSelect").value = source.id;
+        $("selectedSource").textContent = source.name;
+        updateSourceMode();
+      }
+      showView("buscar");
+      openAnime({ title: item.anime_title, url: item.anime_url, thumbnail_url: item.thumbnail_url })
+        .catch((error) => setMessage(error.message, true));
+    }
+
+    /* ---------------- Eventos ---------------- */
+    document.querySelectorAll(".nav-item").forEach((button) => {
+      button.addEventListener("click", () => showView(button.dataset.view));
+    });
+
+    $("sourceSelect").addEventListener("change", () => {
+      const source = currentSource();
+      $("selectedSource").textContent = source ? source.name : "";
+      updateSourceMode();
+      state.selectedAnime = null;
+      state.currentEpisodes = [];
+      state.episodePage = 1;
+      state.episodeHasNext = false;
+      renderDetails(null);
+      renderEpisodes([]);
+      updateEpisodeToolbar();
+      if (isDirectSource(source)) {
+        renderResults([]);
+        setMessage("");
+      } else {
+        loadPopular().catch((error) => setMessage(error.message, true));
+      }
+    });
+    $("searchButton").addEventListener("click", () => search().catch((error) => setMessage(error.message, true)));
+    $("popularButton").addEventListener("click", () => loadPopular().catch((error) => setMessage(error.message, true)));
+    $("latestButton").addEventListener("click", () => loadLatest().catch((error) => setMessage(error.message, true)));
+    $("downloadAnimeButton").addEventListener("click", () => enqueueAnime().catch((error) => setMessage(error.message, true)));
+    $("followButton").addEventListener("click", () => followCurrentAnime());
+    $("backButton").addEventListener("click", () => $("view-buscar").classList.remove("detail-open"));
+    $("prevEpisodePage").addEventListener("click", () => loadEpisodePage(state.episodePage - 1).catch((error) => setMessage(error.message, true)));
+    $("nextEpisodePage").addEventListener("click", () => loadEpisodePage(state.episodePage + 1).catch((error) => setMessage(error.message, true)));
+    $("directEpisodeButton").addEventListener("click", () => enqueueDirect(directEpisodeFromInputs()).catch((error) => setMessage(error.message, true)));
+    $("directBatchButton").addEventListener("click", () => enqueueDirect(directEpisodesFromBatch()).catch((error) => setMessage(error.message, true)));
+    $("searchInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") search().catch((error) => setMessage(error.message, true));
+    });
+    $("trackRefreshButton").addEventListener("click", () => refreshTracking().catch((error) => setTrackMessage(error.message, true)));
+
+    /* ---------------- Arranque ---------------- */
+    renderDetails(null);
+    renderEpisodes([]);
+    updateEpisodeToolbar();
+    updateSourceMode();
+    showView(localStorage.getItem("activeView") || "buscar");
+    loadSources().catch((error) => setMessage(error.message, true));
+    loadQueue().catch(() => {});
+    // Comprobacion inicial de seguimiento (badge de nuevos al entrar en la web).
+    loadTracking().then(() => refreshTracking().catch(() => {})).catch(() => {});
+    setInterval(() => loadQueue().catch(() => {}), 3000);
+  </script>
+</body>
+</html>

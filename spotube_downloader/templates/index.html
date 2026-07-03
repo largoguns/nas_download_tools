@@ -1,0 +1,1452 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spotube Downloader</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --text: #17202a;
+      --muted: #637083;
+      --line: #dbe2ea;
+      --accent: #13795b;
+      --accent-strong: #0f6048;
+      --pending: #8a5a00;
+      --downloading: #0b5cad;
+      --completed: #13795b;
+      --failed: #b42318;
+      --paused: #6f42c1;
+      --canceled: #586474;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1600px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
+    }
+
+    h2 {
+      font-size: 1rem;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--completed);
+      box-shadow: 0 0 0 5px rgba(19, 121, 91, 0.12);
+      flex: 0 0 auto;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    input,
+    button {
+      min-height: 44px;
+      border-radius: 6px;
+      font: inherit;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      padding: 0 12px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      outline: 3px solid rgba(19, 121, 91, 0.16);
+    }
+
+    button {
+      border: 0;
+      padding: 0 18px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      background: var(--accent-strong);
+    }
+
+    button:disabled {
+      cursor: progress;
+      opacity: 0.7;
+    }
+
+    .message {
+      min-height: 22px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .message.error {
+      color: var(--failed);
+    }
+
+    .queue-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 24px 0 10px;
+    }
+
+    .updated-at {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1180px;
+    }
+
+    th,
+    td {
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+    }
+
+    td {
+      font-size: 0.92rem;
+    }
+
+    .queue-row {
+      --progress-value: 0%;
+      --progress-color: var(--line);
+      cursor: pointer;
+    }
+
+    .queue-row td {
+      position: relative;
+      border-bottom: 0;
+    }
+
+    .queue-row td::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background:
+        linear-gradient(
+          to right,
+          var(--progress-color) var(--progress-value),
+          var(--line) var(--progress-value)
+        );
+    }
+
+    .expand-cell {
+      width: 42px;
+      text-align: center;
+    }
+
+    .expand-button {
+      display: inline-grid;
+      width: 30px;
+      min-height: 30px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0;
+      background: #fff;
+      color: var(--text);
+      font-size: 0.95rem;
+      line-height: 1;
+    }
+
+    .expand-button:hover {
+      background: #eef2f6;
+      color: var(--text);
+    }
+
+    .media-cell {
+      min-width: 380px;
+      max-width: 560px;
+    }
+
+    .media-item {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+
+    .cover {
+      width: 64px;
+      height: 64px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #eef2f6;
+      object-fit: cover;
+    }
+
+    .cover-placeholder {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .media-title {
+      color: var(--text);
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .media-meta,
+    .media-link {
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .media-link {
+      display: inline-block;
+      margin-top: 3px;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      text-decoration: none;
+    }
+
+    .media-link:hover {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border-radius: 999px;
+      padding: 0 10px;
+      color: #fff;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .badge.PENDING {
+      background: var(--pending);
+    }
+
+    .badge.DOWNLOADING {
+      background: var(--downloading);
+    }
+
+    .badge.COMPLETED {
+      background: var(--completed);
+    }
+
+    .badge.FAILED {
+      background: var(--failed);
+    }
+
+    .badge.PAUSED {
+      background: var(--paused);
+    }
+
+    .badge.CANCELED {
+      background: var(--canceled);
+    }
+
+    .progress-cell {
+      width: 190px;
+      min-width: 190px;
+    }
+
+    .progress-count {
+      color: var(--text);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .progress-title {
+      max-width: 210px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      overflow-wrap: anywhere;
+    }
+
+    .tracks-row[hidden] {
+      display: none;
+    }
+
+    .tracks-row td {
+      padding: 0 10px 14px 52px;
+      background: #fbfcfd;
+    }
+
+    .tracks-panel {
+      border: 1px solid var(--line);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      overflow: hidden;
+    }
+
+    .tracks-table {
+      min-width: 0;
+      border-collapse: collapse;
+      background: #fff;
+    }
+
+    .tracks-table th,
+    .tracks-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
+    }
+
+    .tracks-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .track-position {
+      width: 70px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .track-title {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .track-artist {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .track-status {
+      width: 150px;
+      white-space: nowrap;
+    }
+
+    .track-status-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 0 9px;
+      background: #eef2f6;
+      color: var(--text);
+      font-size: 0.74rem;
+      font-weight: 800;
+    }
+
+    .track-status-badge.EXISTS,
+    .track-status-badge.COMPLETED {
+      background: rgba(19, 121, 91, 0.12);
+      color: var(--completed);
+    }
+
+    .track-status-badge.DOWNLOADING {
+      background: rgba(11, 92, 173, 0.12);
+      color: var(--downloading);
+    }
+
+    .track-status-badge.FAILED {
+      background: rgba(180, 35, 24, 0.12);
+      color: var(--failed);
+    }
+
+    .error-cell {
+      width: 70px;
+      text-align: center;
+    }
+
+    .error-button {
+      display: inline-grid;
+      width: 34px;
+      min-height: 34px;
+      place-items: center;
+      border: 1px solid rgba(180, 35, 24, 0.28);
+      border-radius: 999px;
+      padding: 0;
+      background: #fff;
+      color: var(--failed);
+      font-size: 1rem;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .error-button:hover {
+      background: rgba(180, 35, 24, 0.08);
+      color: var(--failed);
+    }
+
+    .error-button:focus-visible,
+    .action-button:focus-visible,
+    .modal-close:focus-visible {
+      outline: 3px solid rgba(180, 35, 24, 0.18);
+      outline-offset: 2px;
+    }
+
+    .action-cell {
+      min-width: 160px;
+    }
+
+    .action-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .action-button {
+      display: inline-grid;
+      width: 34px;
+      min-height: 34px;
+      place-items: center;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .action-button svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 2;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+      padding: 0;
+    }
+
+    .action-button.secondary {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+    }
+
+    .action-button.secondary:hover {
+      background: #eef2f6;
+      color: var(--text);
+    }
+
+    .action-button.danger {
+      background: var(--failed);
+    }
+
+    .action-button.danger:hover {
+      background: #8f1c13;
+    }
+
+    .attempt-cell {
+      white-space: nowrap;
+    }
+
+    .empty {
+      color: var(--muted);
+      padding: 18px 0 4px;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(23, 32, 42, 0.52);
+    }
+
+    .modal-backdrop[hidden] {
+      display: none;
+    }
+
+    .modal {
+      width: min(900px, 100%);
+      max-height: min(760px, calc(100vh - 36px));
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 24px 70px rgba(16, 24, 40, 0.26);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .modal-title {
+      min-width: 0;
+      font-size: 0.96rem;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .modal-close {
+      display: inline-grid;
+      width: 34px;
+      min-height: 34px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0;
+      background: #fff;
+      color: var(--text);
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .modal-body {
+      padding: 16px;
+    }
+
+    .error-detail {
+      max-height: min(600px, calc(100vh - 170px));
+      margin: 0;
+      overflow: auto;
+      border-radius: 6px;
+      padding: 14px;
+      background: #111827;
+      color: #f8fafc;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 760px) {
+      main {
+        width: min(100% - 16px, 1600px);
+        padding: 20px 0;
+      }
+
+      .panel {
+        padding: 12px;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .queue-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      form {
+        grid-template-columns: 1fr;
+      }
+
+      button {
+        width: 100%;
+      }
+
+      .table-wrap {
+        overflow: visible;
+      }
+
+      table,
+      tbody {
+        display: block;
+        min-width: 0;
+        width: 100%;
+      }
+
+      thead {
+        display: none;
+      }
+
+      .queue-row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 10px 12px;
+        padding: 14px 0 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .queue-row::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        bottom: -1px;
+        left: 0;
+        height: 4px;
+        background:
+          linear-gradient(
+            to right,
+            var(--progress-color) var(--progress-value),
+            var(--line) var(--progress-value)
+          );
+      }
+
+      .queue-row td,
+      .tracks-row td {
+        display: block;
+        padding: 0;
+        border-bottom: 0;
+      }
+
+      .queue-row td::after {
+        display: none;
+      }
+
+      .expand-cell {
+        grid-column: 1;
+        grid-row: 1;
+        width: 34px;
+      }
+
+      .id-cell {
+        grid-column: 1;
+        grid-row: 2;
+        color: var(--muted);
+        font-size: 0.82rem;
+        text-align: center;
+      }
+
+      .status-cell {
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      .media-cell,
+      .progress-cell,
+      .attempt-cell,
+      .date-cell,
+      .error-cell,
+      .action-cell {
+        grid-column: 1 / -1;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+      }
+
+      .media-item {
+        grid-template-columns: 56px minmax(0, 1fr);
+      }
+
+      .cover {
+        width: 56px;
+        height: 56px;
+      }
+
+      .progress-title {
+        max-width: none;
+      }
+
+      .attempt-cell,
+      .date-cell {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .attempt-cell::before {
+        content: "Intentos: ";
+        font-weight: 700;
+      }
+
+      .date-cell:nth-of-type(7)::before {
+        content: "Creado: ";
+        font-weight: 700;
+      }
+
+      .date-cell:nth-of-type(8)::before {
+        content: "Actualizado: ";
+        font-weight: 700;
+      }
+
+      .error-cell {
+        text-align: left;
+      }
+
+      .action-group {
+        display: flex;
+        flex-wrap: wrap;
+      }
+
+      .tracks-row {
+        display: block;
+      }
+
+      .tracks-row[hidden] {
+        display: none;
+      }
+
+      .tracks-row td {
+        background: transparent;
+        padding: 0 0 12px;
+      }
+
+      .tracks-panel {
+        border-top: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 10px 0 4px;
+      }
+
+      .tracks-table,
+      .tracks-table tbody,
+      .tracks-table tr,
+      .tracks-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .tracks-table thead {
+        display: none;
+      }
+
+      .tracks-table tr {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .tracks-table tr:last-child {
+        border-bottom: 0;
+      }
+
+      .tracks-table td {
+        padding: 0;
+        border-bottom: 0;
+      }
+
+      .track-position,
+      .track-status {
+        width: auto;
+        margin-bottom: 5px;
+      }
+
+      .error-button,
+      .expand-button,
+      .modal-close {
+        width: 34px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Spotube Downloader</h1>
+      </div>
+      <span class="status-dot" title="Worker activo" aria-label="Worker activo"></span>
+    </header>
+
+    <section class="panel" aria-labelledby="add-title">
+      <h2 id="add-title">Añadir a la cola</h2>
+      <form id="add-form" autocomplete="off">
+        <div>
+          <label for="url">URL de Spotify</label>
+          <input
+            id="url"
+            name="url"
+            type="url"
+            inputmode="url"
+            placeholder="https://open.spotify.com/playlist/..."
+            required
+          >
+        </div>
+        <button id="add-button" type="submit">Añadir</button>
+      </form>
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="queue-title">
+      <div class="queue-header">
+        <h2 id="queue-title">Estado de la cola</h2>
+        <span id="updated-at" class="updated-at"></span>
+      </div>
+      <div class="panel">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>ID</th>
+                <th>Estado</th>
+                <th>Contenido</th>
+                <th>Progreso</th>
+                <th>Intentos</th>
+                <th>Creado</th>
+                <th>Actualizado</th>
+                <th>Error</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="queue-body"></tbody>
+          </table>
+        </div>
+        <div id="empty-state" class="empty" hidden>Sin descargas en cola.</div>
+      </div>
+    </section>
+  </main>
+
+  <div id="error-modal" class="modal-backdrop" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="error-modal-title">
+      <div class="modal-header">
+        <div id="error-modal-title" class="modal-title">Detalle del error</div>
+        <button id="error-modal-close" class="modal-close" type="button" aria-label="Cerrar">x</button>
+      </div>
+      <div class="modal-body">
+        <pre id="error-modal-content" class="error-detail"></pre>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Prefijo publico bajo el proxy (p. ej. "/spotube"); vacio en acceso directo.
+    const API_BASE = "{{ base_path }}";
+    const form = document.querySelector("#add-form");
+    const input = document.querySelector("#url");
+    const button = document.querySelector("#add-button");
+    const message = document.querySelector("#message");
+    const queueBody = document.querySelector("#queue-body");
+    const emptyState = document.querySelector("#empty-state");
+    const updatedAt = document.querySelector("#updated-at");
+    const errorModal = document.querySelector("#error-modal");
+    const errorModalTitle = document.querySelector("#error-modal-title");
+    const errorModalContent = document.querySelector("#error-modal-content");
+    const errorModalClose = document.querySelector("#error-modal-close");
+    const errorDetails = new Map();
+    const expandedDownloads = new Set();
+    let maxAttempts = 3;
+
+    const statusLabels = {
+      PENDING: "Pendiente",
+      DOWNLOADING: "Descargando",
+      COMPLETED: "Completado",
+      FAILED: "Fallido",
+      PAUSED: "Pausado",
+      CANCELED: "Cancelado",
+    };
+
+    const typeLabels = {
+      album: "Álbum",
+      playlist: "Playlist",
+      track: "Canción",
+    };
+
+    const trackStatusLabels = {
+      PENDING: "Pendiente",
+      EXISTS: "Ya estaba",
+      DOWNLOADING: "Descargando",
+      COMPLETED: "Descargada",
+      FAILED: "Fallida",
+    };
+
+    function setMessage(text, isError = false) {
+      message.textContent = text;
+      message.classList.toggle("error", isError);
+    }
+
+    function formatDate(value) {
+      if (!value) return "";
+      return new Intl.DateTimeFormat("es-ES", {
+        dateStyle: "short",
+        timeStyle: "medium",
+      }).format(new Date(value));
+    }
+
+    function appendCell(row, text, className) {
+      const cell = document.createElement("td");
+      if (className) cell.className = className;
+      cell.textContent = text || "";
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function getProgressPercent(item) {
+      const total = Number(item.progress_total || 0);
+      if (!total) return 0;
+
+      const current = item.status === "COMPLETED"
+        ? total
+        : Number(item.progress_current || 0);
+      return clamp((current / total) * 100, 0, 100);
+    }
+
+    function getProgressColor(item) {
+      if (item.status === "FAILED") return "var(--failed)";
+      if (item.status === "PAUSED") return "var(--paused)";
+      if (item.status === "CANCELED") return "var(--canceled)";
+      if (item.status === "COMPLETED") return "var(--completed)";
+      if (item.status === "DOWNLOADING") return "var(--downloading)";
+      return "var(--line)";
+    }
+
+    function getTypeLabel(type) {
+      return typeLabels[type] || "Spotify";
+    }
+
+    function getFallbackTitle(item) {
+      if (item.metadata_status === "PENDING" || item.metadata_status === "FETCHING") {
+        return "Leyendo Spotify...";
+      }
+
+      return getTypeLabel(item.metadata_type);
+    }
+
+    function createCoverPlaceholder(item) {
+      const cover = document.createElement("div");
+      cover.className = "cover cover-placeholder";
+      cover.textContent = getTypeLabel(item.metadata_type).slice(0, 2).toUpperCase();
+      return cover;
+    }
+
+    function appendMediaCell(row, item) {
+      const cell = document.createElement("td");
+      cell.className = "media-cell";
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "media-item";
+
+      if (item.metadata_image_url) {
+        const image = document.createElement("img");
+        image.className = "cover";
+        image.src = item.metadata_image_url;
+        image.alt = "";
+        image.loading = "lazy";
+        image.addEventListener("error", () => {
+          image.replaceWith(createCoverPlaceholder(item));
+        }, { once: true });
+        wrapper.appendChild(image);
+      } else {
+        wrapper.appendChild(createCoverPlaceholder(item));
+      }
+
+      const body = document.createElement("div");
+      const title = document.createElement("div");
+      title.className = "media-title";
+      title.textContent = item.metadata_title || getFallbackTitle(item);
+
+      const meta = document.createElement("div");
+      meta.className = "media-meta";
+      meta.textContent = [
+        getTypeLabel(item.metadata_type),
+        item.metadata_artist,
+      ].filter(Boolean).join(" · ");
+
+      const link = document.createElement("a");
+      link.className = "media-link";
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Abrir en Spotify";
+
+      body.append(title, meta, link);
+      wrapper.appendChild(body);
+      cell.appendChild(wrapper);
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function appendProgressCell(row, item) {
+      const cell = document.createElement("td");
+      cell.className = "progress-cell";
+
+      const total = Number(item.progress_total || 0);
+      const current = total ? clamp(Number(item.progress_current || 0), 0, total) : 0;
+
+      const count = document.createElement("div");
+      count.className = "progress-count";
+      count.textContent = total ? `${current}/${total}` : (item.status === "PENDING" ? "En cola" : (statusLabels[item.status] || "-"));
+
+      const title = document.createElement("div");
+      title.className = "progress-title";
+      title.textContent = item.progress_title || (
+        item.status === "COMPLETED" && total ? "Completado" : ""
+      );
+
+      cell.append(count, title);
+      row.appendChild(cell);
+      return cell;
+    }
+
+    const actionIconPaths = {
+      pause: [
+        '<rect x="6" y="4" width="4" height="16" rx="1"></rect>',
+        '<rect x="14" y="4" width="4" height="16" rx="1"></rect>',
+      ],
+      resume: [
+        '<polygon points="6 4 20 12 6 20 6 4"></polygon>',
+      ],
+      cancel: [
+        '<path d="M18 6 6 18"></path>',
+        '<path d="m6 6 12 12"></path>',
+      ],
+      retry: [
+        '<path d="M3 12a9 9 0 0 1 15.1-6.6L21 8"></path>',
+        '<path d="M21 3v5h-5"></path>',
+        '<path d="M21 12a9 9 0 0 1-15.1 6.6L3 16"></path>',
+        '<path d="M3 21v-5h5"></path>',
+      ],
+      delete: [
+        '<path d="M3 6h18"></path>',
+        '<path d="M8 6V4h8v2"></path>',
+        '<path d="M19 6l-1 14H6L5 6"></path>',
+        '<path d="M10 11v6"></path>',
+        '<path d="M14 11v6"></path>',
+      ],
+    };
+
+    function createIcon(action) {
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("aria-hidden", "true");
+      icon.innerHTML = (actionIconPaths[action] || []).join("");
+      return icon;
+    }
+
+    function createActionButton(item, action, label, variant = "") {
+      const button = document.createElement("button");
+      button.className = `action-button ${variant}`.trim();
+      button.type = "button";
+      button.dataset.action = action;
+      button.dataset.downloadId = item.id;
+      button.title = label;
+      button.setAttribute("aria-label", `${label} descarga ${item.id}`);
+      button.appendChild(createIcon(action));
+
+      const accessibleLabel = document.createElement("span");
+      accessibleLabel.className = "sr-only";
+      accessibleLabel.textContent = label;
+      button.appendChild(accessibleLabel);
+      return button;
+    }
+
+    function appendActionCell(row, item) {
+      const cell = document.createElement("td");
+      cell.className = "action-cell";
+      const group = document.createElement("div");
+      group.className = "action-group";
+
+      if (item.status === "PENDING") {
+        group.append(
+          createActionButton(item, "pause", "Pausar", "secondary"),
+          createActionButton(item, "cancel", "Cancelar", "danger"),
+          createActionButton(item, "delete", "Eliminar", "secondary"),
+        );
+      } else if (item.status === "DOWNLOADING") {
+        group.append(
+          createActionButton(item, "pause", "Pausar", "secondary"),
+          createActionButton(item, "cancel", "Cancelar", "danger"),
+        );
+      } else if (item.status === "PAUSED") {
+        group.append(
+          createActionButton(item, "resume", "Reanudar"),
+          createActionButton(item, "cancel", "Cancelar", "danger"),
+          createActionButton(item, "delete", "Eliminar", "secondary"),
+        );
+      } else if (item.status === "FAILED") {
+        group.append(
+          createActionButton(item, "retry", "Reintentar"),
+          createActionButton(item, "delete", "Eliminar", "secondary"),
+        );
+      } else if (item.status === "COMPLETED") {
+        group.append(
+          createActionButton(item, "retry", "Reprocesar"),
+          createActionButton(item, "delete", "Eliminar", "secondary"),
+        );
+      } else if (item.status === "CANCELED") {
+        group.append(
+          createActionButton(item, "retry", "Reintentar"),
+          createActionButton(item, "delete", "Eliminar", "secondary"),
+        );
+      }
+
+      cell.appendChild(group);
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function appendErrorCell(row, item) {
+      const cell = document.createElement("td");
+      cell.className = "error-cell";
+
+      if (item.error) {
+        errorDetails.set(String(item.id), {
+          title: `Error en descarga #${item.id}`,
+          text: item.error,
+        });
+
+        const errorButton = document.createElement("button");
+        errorButton.className = "error-button";
+        errorButton.type = "button";
+        errorButton.dataset.errorId = item.id;
+        errorButton.title = "Ver error";
+        errorButton.setAttribute("aria-label", `Ver error de la descarga ${item.id}`);
+        errorButton.textContent = "!";
+        cell.appendChild(errorButton);
+      }
+
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function openErrorModal(error) {
+      errorModalTitle.textContent = error.title;
+      errorModalContent.textContent = error.text;
+      errorModal.hidden = false;
+      errorModalClose.focus();
+    }
+
+    function closeErrorModal() {
+      errorModal.hidden = true;
+      errorModalContent.textContent = "";
+    }
+
+    function toggleDownload(downloadId) {
+      const key = String(downloadId);
+      if (expandedDownloads.has(key)) {
+        expandedDownloads.delete(key);
+      } else {
+        expandedDownloads.add(key);
+      }
+      loadStatus().catch((error) => setMessage(error.message, true));
+    }
+
+    function createExpandCell(item, expanded) {
+      const cell = document.createElement("td");
+      cell.className = "expand-cell";
+
+      const button = document.createElement("button");
+      button.className = "expand-button";
+      button.type = "button";
+      button.dataset.expandId = item.id;
+      button.setAttribute("aria-expanded", String(expanded));
+      button.setAttribute("aria-label", `${expanded ? "Plegar" : "Desplegar"} descarga ${item.id}`);
+      button.textContent = expanded ? "v" : ">";
+
+      cell.appendChild(button);
+      return cell;
+    }
+
+    function createTrackDetailsRow(item, expanded, colSpan) {
+      const row = document.createElement("tr");
+      row.className = "tracks-row";
+      row.dataset.tracksFor = item.id;
+      row.hidden = !expanded;
+
+      const cell = document.createElement("td");
+      cell.colSpan = colSpan;
+
+      const panel = document.createElement("div");
+      panel.className = "tracks-panel";
+
+      const tracks = item.tracks || [];
+      if (tracks.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "Las canciones aparecerán cuando empiece el procesamiento.";
+        panel.appendChild(empty);
+      } else {
+        const table = document.createElement("table");
+        table.className = "tracks-table";
+
+        const head = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        for (const label of ["#", "Estado", "Canción"]) {
+          const th = document.createElement("th");
+          th.textContent = label;
+          headRow.appendChild(th);
+        }
+        head.appendChild(headRow);
+        table.appendChild(head);
+
+        const body = document.createElement("tbody");
+        for (const track of tracks) {
+          const trackRow = document.createElement("tr");
+
+          const position = document.createElement("td");
+          position.className = "track-position";
+          position.textContent = `${track.position}/${tracks.length}`;
+
+          const status = document.createElement("td");
+          status.className = "track-status";
+          const statusBadge = document.createElement("span");
+          statusBadge.className = `track-status-badge ${track.status}`;
+          statusBadge.textContent = trackStatusLabels[track.status] || track.status;
+          status.appendChild(statusBadge);
+
+          const title = document.createElement("td");
+          const titleText = document.createElement("div");
+          titleText.className = "track-title";
+          titleText.textContent = track.title || "Canción sin título";
+          const artist = document.createElement("div");
+          artist.className = "track-artist";
+          artist.textContent = track.artist || "";
+          title.append(titleText, artist);
+
+          trackRow.append(position, status, title);
+          body.appendChild(trackRow);
+        }
+        table.appendChild(body);
+        panel.appendChild(table);
+      }
+
+      cell.appendChild(panel);
+      row.appendChild(cell);
+      return row;
+    }
+
+    function renderItems(items) {
+      queueBody.replaceChildren();
+      errorDetails.clear();
+      emptyState.hidden = items.length !== 0;
+
+      for (const item of items) {
+        const row = document.createElement("tr");
+        const expanded = expandedDownloads.has(String(item.id));
+        row.className = "queue-row";
+        row.dataset.downloadId = item.id;
+        row.style.setProperty("--progress-value", `${getProgressPercent(item)}%`);
+        row.style.setProperty("--progress-color", getProgressColor(item));
+        row.appendChild(createExpandCell(item, expanded));
+        appendCell(row, `#${item.id}`, "id-cell");
+
+        const statusCell = document.createElement("td");
+        statusCell.className = "status-cell";
+        const badge = document.createElement("span");
+        badge.className = `badge ${item.status}`;
+        badge.textContent = statusLabels[item.status] || item.status;
+        statusCell.appendChild(badge);
+        row.appendChild(statusCell);
+
+        appendMediaCell(row, item);
+        appendProgressCell(row, item);
+        appendCell(row, `${item.attempt_count || 0}/${maxAttempts}`, "attempt-cell");
+        appendCell(row, formatDate(item.created_at), "date-cell");
+        appendCell(row, formatDate(item.updated_at), "date-cell");
+        appendErrorCell(row, item);
+
+        appendActionCell(row, item);
+        queueBody.appendChild(row);
+        queueBody.appendChild(createTrackDetailsRow(item, expanded, 10));
+      }
+    }
+
+    function getActionRequest(action, downloadId) {
+      if (action === "delete") {
+        return {
+          url: `${API_BASE}/download/${downloadId}`,
+          options: { method: "DELETE" },
+          success: `Descarga #${downloadId} eliminada de la cola.`,
+        };
+      }
+
+      const successLabels = {
+        pause: "pausada",
+        resume: "reanudada",
+        cancel: "cancelada",
+        retry: "reencolada",
+      };
+
+      return {
+        url: `${API_BASE}/${action}/${downloadId}`,
+        options: { method: "POST" },
+        success: `Descarga #${downloadId} ${successLabels[action] || "actualizada"}.`,
+      };
+    }
+
+    async function performQueueAction(actionButton) {
+      const action = actionButton.dataset.action;
+      const downloadId = actionButton.dataset.downloadId;
+      if (!action || !downloadId) return;
+
+      if (action === "delete" && !window.confirm(`Eliminar la descarga #${downloadId} de la cola? No se borraran archivos de musica.`)) {
+        return;
+      }
+
+      const request = getActionRequest(action, downloadId);
+      actionButton.disabled = true;
+      setMessage("");
+
+      try {
+        const response = await fetch(request.url, request.options);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo aplicar la accion.");
+        }
+
+        setMessage(request.success);
+        await loadStatus();
+      } catch (error) {
+        setMessage(error.message, true);
+      } finally {
+        actionButton.disabled = false;
+      }
+    }
+
+    async function loadStatus() {
+      const response = await fetch(`${API_BASE}/status`, { cache: "no-store" });
+      if (!response.ok) throw new Error("No se pudo cargar la cola.");
+      const data = await response.json();
+      maxAttempts = data.config?.spotdl_max_attempts || maxAttempts;
+      renderItems(data.items || []);
+      updatedAt.textContent = `Actualizado ${formatDate(new Date().toISOString())}`;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const url = input.value.trim();
+      if (!url) return;
+
+      button.disabled = true;
+      setMessage("");
+
+      try {
+        const response = await fetch(`${API_BASE}/add`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo añadir.");
+        }
+
+        input.value = "";
+        setMessage(`Añadido como descarga #${data.id}.`);
+        await loadStatus();
+      } catch (error) {
+        setMessage(error.message, true);
+      } finally {
+        button.disabled = false;
+        input.focus();
+      }
+    });
+
+    queueBody.addEventListener("click", async (event) => {
+      const errorButton = event.target.closest("[data-error-id]");
+      if (errorButton) {
+        const error = errorDetails.get(errorButton.dataset.errorId);
+        if (error) openErrorModal(error);
+        return;
+      }
+
+      const expandButton = event.target.closest("[data-expand-id]");
+      if (expandButton) {
+        toggleDownload(expandButton.dataset.expandId);
+        return;
+      }
+
+      const actionButton = event.target.closest("[data-action]");
+      if (!actionButton) {
+        const row = event.target.closest(".queue-row");
+        if (row && !event.target.closest("a, button")) {
+          toggleDownload(row.dataset.downloadId);
+        }
+        return;
+      }
+
+      performQueueAction(actionButton);
+    });
+
+    errorModalClose.addEventListener("click", closeErrorModal);
+    errorModal.addEventListener("click", (event) => {
+      if (event.target === errorModal) closeErrorModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !errorModal.hidden) closeErrorModal();
+    });
+
+    loadStatus().catch((error) => setMessage(error.message, true));
+    setInterval(() => {
+      loadStatus().catch((error) => setMessage(error.message, true));
+    }, 5000);
+  </script>
+</body>
+</html>

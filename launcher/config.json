@@ -1,0 +1,26 @@
+{
+  "title": "Herramientas de descarga",
+  "apps": [
+    {
+      "name": "Spotube",
+      "desc": "Musica desde Spotify",
+      "icon": "🎵",
+      "url": "/spotube",
+      "accent": "#16794c"
+    },
+    {
+      "name": "AnimeDownloader",
+      "desc": "Series y peliculas de anime",
+      "icon": "🎬",
+      "url": "/anime",
+      "accent": "#1d4ed8"
+    },
+    {
+      "name": "Telegram-Downloader",
+      "desc": "Ficheros desde bots de Telegram",
+      "icon": "📥",
+      "url": "/telegram",
+      "accent": "#0f766e"
+    }
+  ]
+}

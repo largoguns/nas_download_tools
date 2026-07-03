@@ -1,0 +1,30 @@
+# ---- Secretos / configuracion local ----
+.env
+*.env.local
+
+# ---- Entornos virtuales de Python ----
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# ---- Datos, colas y descargas (nunca al repo) ----
+data/
+downloads/
+*.db
+*.db-shm
+*.db-wal
+*.session
+*.session-journal
+
+# ---- Musica de Spotube (se conserva solo el .gitkeep) ----
+spotube_downloader/music/*
+!spotube_downloader/music/.gitkeep
+spotube_downloader/cookies_store/*.txt
+
+# ---- Material de referencia externo (no es parte del proyecto) ----
+to_be_analyzed/
+
+# ---- Varios ----
+.DS_Store
+*.log

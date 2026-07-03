@@ -1,0 +1,49 @@
+services:
+  anime-downloader:
+    build: .
+    container_name: anime-downloader
+    # Sin puerto publicado: el acceso es via el proxy (Traefik) en /anime.
+    # Para acceso directo en desarrollo, descomenta y pon APP_BASE_PATH="".
+    # ports:
+    #   - "${ANIME_WEB_PORT:-8090}:8090"
+    environment:
+      PORT: 8090
+      DATABASE_PATH: /data/anime_queue.db
+      DOWNLOAD_DIR: /downloads
+      APP_BASE_PATH: ${APP_BASE_PATH:-/anime}
+      FFMPEG_BIN: ${FFMPEG_BIN:-ffmpeg}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PREFERRED_QUALITY: ${PREFERRED_QUALITY:-}
+      DOWNLOAD_CONCURRENCY: ${DOWNLOAD_CONCURRENCY:-1}
+      DOWNLOAD_MAX_RETRIES: ${DOWNLOAD_MAX_RETRIES:-5}
+      DOWNLOAD_START_RETRIES: ${DOWNLOAD_START_RETRIES:-1}
+      ANIME_DOWNLOAD_SERVER_PRIORITY: ${ANIME_DOWNLOAD_SERVER_PRIORITY:-}
+      ANIME_JKANIME_MAX_EPISODE_PAGES: ${ANIME_JKANIME_MAX_EPISODE_PAGES:-100}
+      ANIME_JKANIME_EPISODE_PAUSE_SECONDS: ${ANIME_JKANIME_EPISODE_PAUSE_SECONDS:-0.25}
+      ANIME_JKANIME_DIRECT_DOWNLOAD: ${ANIME_JKANIME_DIRECT_DOWNLOAD:-true}
+      ANIME_JKANIME_EXTRACTOR_FALLBACK: ${ANIME_JKANIME_EXTRACTOR_FALLBACK:-true}
+      ANIME_JKANIME_PAGE_RETRIES: ${ANIME_JKANIME_PAGE_RETRIES:-2}
+      ANIME_HTML_RETRIES: ${ANIME_HTML_RETRIES:-2}
+      ANIME_ENABLE_DEMO: ${ANIME_ENABLE_DEMO:-false}
+      ANIME_DEMO_MEDIA_URL: ${ANIME_DEMO_MEDIA_URL:-}
+      JELLYFIN_URL: ${JELLYFIN_URL:-}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      JELLYFIN_LIBRARY_ID: ${JELLYFIN_LIBRARY_ID:-}
+      JELLYFIN_REFRESH_DEBOUNCE_SECONDS: ${JELLYFIN_REFRESH_DEBOUNCE_SECONDS:-30}
+    volumes:
+      - ${ANIME_DATA_DIR:-./data}:/data
+      - ${ANIME_DOWNLOAD_DIR:-./downloads}:/downloads
+    restart: unless-stopped
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.anime.rule=PathPrefix(`/anime`)"
+      - "traefik.http.routers.anime.entrypoints=web"
+      - "traefik.http.routers.anime.middlewares=anime-strip"
+      - "traefik.http.middlewares.anime-strip.stripprefix.prefixes=/anime"
+      - "traefik.http.services.anime.loadbalancer.server.port=8090"
+
+networks:
+  proxy:
+    external: true

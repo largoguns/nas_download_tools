@@ -1,0 +1,15 @@
+.agents/
+.codex/
+.git/
+.venv/
+venv/
+downloads/
+data/
+__pycache__/
+*.py[cod]
+*.db
+*.db-shm
+*.db-wal
+*.session
+*.session-journal
+.env

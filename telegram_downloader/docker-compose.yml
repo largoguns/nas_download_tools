@@ -1,0 +1,43 @@
+services:
+  telegram-downloader:
+    build: .
+    container_name: telegram-downloader
+    restart: unless-stopped
+    # Sin puerto publicado: el acceso es via el proxy (Traefik) en /telegram.
+    # Para acceso directo en desarrollo, descomenta y pon APP_BASE_PATH="".
+    # ports:
+    #   - "${TELEGRAM_WEB_PORT:-8100}:8100"
+    environment:
+      DATABASE_PATH: /data/telegram_queue.db
+      DOWNLOAD_DIR: /downloads
+      APP_BASE_PATH: ${APP_BASE_PATH:-/telegram}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TG_API_ID: ${TG_API_ID:-}
+      TG_API_HASH: ${TG_API_HASH:-}
+      TG_SESSION_STRING: ${TG_SESSION_STRING:-}
+      BOT_HISTORY_LIMIT: ${BOT_HISTORY_LIMIT:-15}
+      WORKER_SLEEP_SECONDS: ${WORKER_SLEEP_SECONDS:-3}
+      PROGRESS_UPDATE_SECONDS: ${PROGRESS_UPDATE_SECONDS:-1}
+      JELLYFIN_URL: ${JELLYFIN_URL:-}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      JELLYFIN_LIBRARY_ID: ${JELLYFIN_LIBRARY_ID:-}
+      JELLYFIN_REFRESH_DEBOUNCE_SECONDS: ${JELLYFIN_REFRESH_DEBOUNCE_SECONDS:-30}
+    volumes:
+      - ${TELEGRAM_DOWNLOAD_DIR:-./downloads}:/downloads
+      - telegram_queue:/data
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.telegram.rule=PathPrefix(`/telegram`)"
+      - "traefik.http.routers.telegram.entrypoints=web"
+      - "traefik.http.routers.telegram.middlewares=telegram-strip"
+      - "traefik.http.middlewares.telegram-strip.stripprefix.prefixes=/telegram"
+      - "traefik.http.services.telegram.loadbalancer.server.port=8100"
+
+volumes:
+  telegram_queue:
+
+networks:
+  proxy:
+    external: true

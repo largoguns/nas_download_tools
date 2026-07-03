@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Telegram-Downloader</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f8; --surface: #ffffff; --text: #17202a; --muted: #667085;
+      --line: #d8dee8; --accent: #0f766e; --accent-strong: #115e59;
+      --accent-soft: rgba(15, 118, 110, 0.12); --blue: #1d4ed8; --red: #b42318;
+      --amber: #a15c07; --violet: #6d28d9; --green: #16794c; --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.45; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(1.3rem, 3.4vw, 1.8rem); }
+    h2 { font-size: 1rem; }
+    .muted { color: var(--muted); }
+    .small { font-size: 0.88rem; }
+
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 224px; flex: none; background: var(--surface); border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; }
+    .brand { padding: 6px 10px 14px; }
+    .brand strong { font-size: 1.05rem; }
+    .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: var(--radius); padding: 10px 12px; font: inherit; font-weight: 750; cursor: pointer; min-height: 44px; }
+    .nav-item:hover { background: #eef2f6; }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav-item .nav-ico { font-size: 1.1rem; line-height: 1; }
+    .nav-item .nav-label { flex: 1 1 auto; }
+    .nav-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 0.72rem; font-weight: 800; display: none; align-items: center; justify-content: center; }
+    .nav-badge.show { display: inline-flex; }
+
+    .content { flex: 1 1 auto; min-width: 0; width: min(1180px, 100%); margin: 0 auto; padding: clamp(12px, 2.6vw, 24px); }
+    .content-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .view[hidden] { display: none; }
+    .stack { display: grid; gap: 16px; }
+
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(12px, 2.4vw, 16px); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
+    .panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+
+    label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
+    input, select, button { min-height: 42px; border-radius: 6px; font: inherit; }
+    input, select { width: 100%; border: 1px solid var(--line); padding: 0 10px; background: #fff; color: var(--text); }
+    input:focus, select:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); }
+    button { border: 0; padding: 0 14px; background: var(--accent); color: #fff; cursor: pointer; font-weight: 750; white-space: nowrap; }
+    button:hover { background: var(--accent-strong); }
+    button:disabled { cursor: not-allowed; opacity: 0.58; }
+    .ghost { border: 1px solid var(--line); background: #fff; color: var(--text); }
+    .ghost:hover { background: #eef2f6; }
+    .danger { background: var(--red); } .danger:hover { background: #912018; }
+    button.small { min-height: 32px; padding: 2px 12px; font-size: 0.78rem; }
+
+    .toolbar { display: grid; gap: 10px; grid-template-columns: 1fr; align-items: end; }
+    .list { display: grid; gap: 10px; }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: #fff; }
+    .title { font-weight: 800; overflow-wrap: anywhere; }
+    .meta { margin-top: 3px; color: var(--muted); font-size: 0.86rem; overflow-wrap: anywhere; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+
+    /* Consola de bot */
+    .send-bar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+    .convo { display: grid; gap: 10px; margin-top: 4px; }
+    .msg { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; max-width: 88%; }
+    .msg.in { background: #fff; justify-self: start; }
+    .msg.out { background: var(--accent-soft); justify-self: end; border-color: transparent; }
+    .msg .who { font-size: 0.72rem; font-weight: 800; color: var(--muted); margin-bottom: 4px; }
+    .msg .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .file-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+    .kbd { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .kbd button, .kbd a { min-height: 34px; padding: 4px 10px; font-size: 0.82rem; border-radius: 6px; background: #fff; border: 1px solid var(--accent); color: var(--accent-strong); text-decoration: none; display: inline-flex; align-items: center; font-weight: 700; }
+    .kbd button:hover, .kbd a:hover { background: var(--accent-soft); }
+
+    .queue-item { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; }
+    .queue-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; align-items: center; }
+    .bar { height: 3px; background: #e6ebf2; }
+    .bar > span { display: block; height: 100%; width: 0%; background: var(--blue); }
+
+    .status { display: inline-flex; align-items: center; min-height: 24px; border-radius: 999px; padding: 0 8px; background: #eef2f6; color: var(--muted); font-size: 0.75rem; font-weight: 850; }
+    .status.PENDING { color: var(--amber); } .status.DOWNLOADING { color: var(--blue); }
+    .status.COMPLETED { color: var(--green); } .status.FAILED { color: var(--red); }
+    .status.PAUSED { color: var(--violet); } .status.CANCELED { color: var(--muted); }
+
+    .message { min-height: 22px; margin-top: 10px; color: var(--muted); font-size: 0.92rem; }
+    .message.error { color: var(--red); }
+    .empty { border: 1px dashed var(--line); border-radius: var(--radius); padding: 18px; color: var(--muted); background: #fff; text-align: center; }
+
+    @media (min-width: 640px) { .toolbar { grid-template-columns: minmax(0, 1fr) auto; } }
+    @media (max-width: 820px) {
+      .app { flex-direction: column; }
+      .sidebar { position: fixed; bottom: 0; left: 0; right: 0; top: auto; width: auto; height: auto; flex-direction: row; gap: 4px; border-right: 0; border-top: 1px solid var(--line); padding: 6px; z-index: 60; }
+      .brand { display: none; }
+      .nav-item { flex-direction: column; gap: 2px; font-size: 0.72rem; padding: 6px 2px; justify-content: center; text-align: center; min-height: 52px; position: relative; }
+      .nav-item .nav-ico { font-size: 1.25rem; }
+      .content { width: 100%; padding-bottom: 78px; }
+      .msg { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>Telegram-Downloader</strong>
+        <div class="muted small">Bots y descargas</div>
+      </div>
+      <button class="nav-item active" type="button" data-view="bots">
+        <span class="nav-ico">&#129302;</span><span class="nav-label">Bots</span>
+      </button>
+      <button class="nav-item" type="button" data-view="descargas">
+        <span class="nav-ico">&#11015;</span><span class="nav-label">Descargas</span>
+        <span id="queueBadge" class="nav-badge">0</span>
+      </button>
+    </aside>
+
+    <main class="content">
+      <div class="content-head">
+        <h1 id="viewTitle">Bots</h1>
+        <span id="statusPill" class="status">Listo</span>
+      </div>
+
+      <!-- ===================== BOTS ===================== -->
+      <section id="view-bots" class="view stack">
+        <div class="panel">
+          <div class="toolbar">
+            <div>
+              <label for="botInput">Anadir bot (@usuario o enlace t.me)</label>
+              <input id="botInput" placeholder="@videoclubpacobot" autocomplete="off">
+            </div>
+            <button id="addBotBtn" type="button">Anadir</button>
+          </div>
+          <div id="botMsg" class="message"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Bots</h2></div>
+          <div id="botList" class="list"></div>
+        </div>
+
+        <!-- Consola del bot seleccionado -->
+        <div id="console" class="panel" hidden>
+          <div class="panel-head">
+            <h2 id="consoleTitle">Consola</h2>
+            <div class="actions">
+              <button id="helpBtn" type="button" class="ghost small">/start</button>
+              <button id="refreshMsgsBtn" type="button" class="ghost small">Actualizar</button>
+              <button id="closeConsoleBtn" type="button" class="ghost small">Cerrar</button>
+            </div>
+          </div>
+          <div class="send-bar">
+            <input id="sendInput" placeholder="Escribe un titulo o comando y pulsa Enviar" autocomplete="off">
+            <button id="sendBtn" type="button">Enviar</button>
+          </div>
+          <div id="convoMsg" class="message"></div>
+          <div id="convo" class="convo"></div>
+        </div>
+      </section>
+
+      <!-- ===================== DESCARGAS ===================== -->
+      <section id="view-descargas" class="view stack" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Cola de descargas</h2>
+            <button id="refreshQueueBtn" type="button" class="ghost small">Refrescar</button>
+          </div>
+          <div id="queueList" class="list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    // Prefijo publico bajo el proxy (p. ej. "/telegram"); vacio en acceso directo.
+    const API_BASE = "{{ base_path }}";
+    const api = async (url, opts) => {
+      const res = await fetch(API_BASE + url, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    };
+    const jpost = (url, body) => api(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const fmtSize = (bytes) => {
+      if (!bytes) return "-";
+      const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, n = bytes;
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+      return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
+    };
+    const escapeHtml = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    let bots = [];
+    let activeBot = null; // {id, title}
+
+    const views = ["bots", "descargas"];
+    const titles = { bots: "Bots", descargas: "Descargas" };
+    function showView(name) {
+      views.forEach((v) => { $(`#view-${v}`).hidden = v !== name; });
+      document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+      $("#viewTitle").textContent = titles[name];
+      if (name === "descargas") loadQueue();
+      if (name === "bots") loadBots();
+    }
+    document.querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+    function setMsg(sel, text, isError) { const el = $(sel); el.textContent = text || ""; el.classList.toggle("error", !!isError); }
+
+    // ---------------- Bots ----------------
+    async function loadBots() {
+      try { bots = (await api("/api/bots")).bots; renderBots(); }
+      catch (e) { setMsg("#botMsg", e.message, true); }
+    }
+    function renderBots() {
+      const list = $("#botList");
+      if (!bots.length) { list.innerHTML = `<div class="empty">No hay bots. Anade uno arriba (ej. @videoclubpacobot).</div>`; return; }
+      list.innerHTML = "";
+      bots.forEach((b) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = `
+          <div>
+            <div class="title">${escapeHtml(b.title)}</div>
+            <div class="meta">${b.username ? "@" + escapeHtml(b.username) : escapeHtml(b.type || "")}</div>
+            ${b.error ? `<div class="meta" style="color:var(--red)">${escapeHtml(b.error)}</div>` : ""}
+          </div>
+          <div class="actions">
+            <button class="small" data-act="open" data-id="${b.id}">Abrir</button>
+            <button class="danger small" data-act="del" data-id="${b.id}">Eliminar</button>
+          </div>`;
+        list.appendChild(row);
+      });
+      list.querySelectorAll("button").forEach((b) => b.addEventListener("click", onBotAction));
+    }
+    async function onBotAction(ev) {
+      const id = Number(ev.target.dataset.id), act = ev.target.dataset.act;
+      if (act === "open") { openConsole(bots.find((b) => b.id === id)); }
+      else if (act === "del") {
+        if (!confirm("Eliminar el bot? (no borra descargas)")) return;
+        try { await api(`/api/bots/${id}`, { method: "DELETE" }); if (activeBot && activeBot.id === id) closeConsole(); await loadBots(); }
+        catch (e) { setMsg("#botMsg", e.message, true); }
+      }
+    }
+    $("#addBotBtn").addEventListener("click", async () => {
+      const identifier = $("#botInput").value.trim();
+      if (!identifier) return;
+      $("#addBotBtn").disabled = true; setMsg("#botMsg", "Resolviendo bot...", false);
+      try {
+        await jpost("/api/bots", { identifier });
+        $("#botInput").value = ""; setMsg("#botMsg", "Bot anadido. Pulsa Abrir para interactuar.", false);
+        await loadBots();
+      } catch (e) { setMsg("#botMsg", e.message, true); }
+      finally { $("#addBotBtn").disabled = false; }
+    });
+
+    // ---------------- Consola ----------------
+    function openConsole(bot) {
+      activeBot = bot;
+      $("#consoleTitle").textContent = bot.title;
+      $("#console").hidden = false;
+      $("#convo").innerHTML = "";
+      setMsg("#convoMsg", "Cargando conversacion...", false);
+      loadMessages();
+      $("#console").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    function closeConsole() { activeBot = null; $("#console").hidden = true; }
+    $("#closeConsoleBtn").addEventListener("click", closeConsole);
+    $("#refreshMsgsBtn").addEventListener("click", loadMessages);
+    $("#helpBtn").addEventListener("click", () => sendText("/start"));
+    $("#sendBtn").addEventListener("click", () => sendText($("#sendInput").value.trim()));
+    $("#sendInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendText($("#sendInput").value.trim()); });
+
+    async function loadMessages() {
+      if (!activeBot) return;
+      try {
+        const data = await api(`/api/bots/${activeBot.id}/messages`);
+        renderConvo(data.messages); setMsg("#convoMsg", "", false);
+      } catch (e) { setMsg("#convoMsg", e.message, true); }
+    }
+    async function sendText(text) {
+      if (!activeBot || !text) return;
+      $("#sendBtn").disabled = true; setMsg("#convoMsg", "Enviando...", false);
+      try {
+        const data = await jpost(`/api/bots/${activeBot.id}/send`, { text });
+        $("#sendInput").value = ""; renderConvo(data.messages); setMsg("#convoMsg", "", false);
+      } catch (e) { setMsg("#convoMsg", e.message, true); }
+      finally { $("#sendBtn").disabled = false; }
+    }
+    async function clickButton(messageId, row, col) {
+      if (!activeBot) return;
+      setMsg("#convoMsg", "Procesando...", false);
+      try {
+        const data = await jpost(`/api/bots/${activeBot.id}/click`, { message_id: messageId, row, col });
+        if (data.opened_url) window.open(data.opened_url, "_blank", "noopener");
+        renderConvo(data.messages); setMsg("#convoMsg", "", false);
+      } catch (e) { setMsg("#convoMsg", e.message, true); }
+    }
+    async function downloadMessage(messageId, fileName, title) {
+      if (!activeBot) return;
+      try {
+        await jpost(`/api/bots/${activeBot.id}/download`, { message_id: messageId, file_name: fileName, title });
+        setMsg("#convoMsg", "Anadido a la cola de descargas.", false); loadQueue();
+      } catch (e) { setMsg("#convoMsg", e.message, true); }
+    }
+
+    function renderConvo(messages) {
+      const box = $("#convo");
+      box.innerHTML = "";
+      if (!messages || !messages.length) { box.innerHTML = `<div class="empty">Sin mensajes. Escribe algo o pulsa /start.</div>`; return; }
+      messages.forEach((m) => {
+        const el = document.createElement("div");
+        el.className = "msg " + (m.from_bot ? "in" : "out");
+        let html = `<div class="who">${m.from_bot ? "Bot" : "Tu"}</div>`;
+        if (m.text) html += `<div class="body">${escapeHtml(m.text)}</div>`;
+        if (m.has_file) {
+          const titleAttr = escapeHtml((m.text || "").replace(/\s+/g, " ").trim());
+          html += `<div class="file-line">&#128206; <span class="title">${escapeHtml(m.file_name || m.media_type || "fichero")}</span>`
+            + `<span class="muted small">${fmtSize(m.file_size)}</span>`
+            + `<button class="small" data-dl="${m.id}" data-name="${escapeHtml(m.file_name || "")}" data-title="${titleAttr}">Descargar</button></div>`;
+        }
+        if (m.buttons && m.buttons.length) {
+          html += `<div class="kbd">` + m.buttons.map((b) =>
+            b.kind === "url"
+              ? `<a href="${escapeHtml(b.url)}" target="_blank" rel="noopener">${escapeHtml(b.text)}</a>`
+              : `<button data-msg="${m.id}" data-row="${b.row}" data-col="${b.col}">${escapeHtml(b.text)}</button>`
+          ).join("") + `</div>`;
+        }
+        el.innerHTML = html;
+        box.appendChild(el);
+      });
+      box.querySelectorAll("button[data-msg]").forEach((b) => b.addEventListener("click", () => clickButton(Number(b.dataset.msg), Number(b.dataset.row), Number(b.dataset.col))));
+      box.querySelectorAll("button[data-dl]").forEach((b) => b.addEventListener("click", () => downloadMessage(Number(b.dataset.dl), b.dataset.name, b.dataset.title)));
+    }
+
+    // ---------------- Descargas ----------------
+    $("#refreshQueueBtn").addEventListener("click", loadQueue);
+    async function loadQueue() {
+      try {
+        const data = await api("/api/downloads");
+        renderQueue(data.downloads);
+        const active = data.downloads.filter((d) => ["PENDING", "DOWNLOADING", "PAUSED"].includes(d.status)).length;
+        const badge = $("#queueBadge"); badge.textContent = active; badge.classList.toggle("show", active > 0);
+      } catch (e) { /* silencioso */ }
+    }
+    function renderQueue(items) {
+      const list = $("#queueList");
+      if (!items.length) { list.innerHTML = `<div class="empty">La cola esta vacia.</div>`; return; }
+      list.innerHTML = "";
+      items.forEach((d) => {
+        const pct = d.total_bytes ? Math.min(100, (d.bytes_downloaded / d.total_bytes) * 100) : 0;
+        const el = document.createElement("div");
+        el.className = "queue-item";
+        const name = d.file_name || `Mensaje ${d.message_id}`;
+        el.innerHTML = `
+          <div class="queue-main">
+            <div>
+              <div class="title">${escapeHtml(name)}</div>
+              <div class="meta">${escapeHtml(d.bot_title)} · ${fmtSize(d.bytes_downloaded)} / ${fmtSize(d.total_bytes)}</div>
+              ${d.error ? `<div class="meta" style="color:var(--red)">${escapeHtml(d.error)}</div>` : ""}
+            </div>
+            <div class="actions"><span class="status ${d.status}">${d.status}</span>${actionButtons(d)}</div>
+          </div>
+          <div class="bar"><span style="width:${pct}%"></span></div>`;
+        list.appendChild(el);
+      });
+      list.querySelectorAll("button[data-act]").forEach((b) => b.addEventListener("click", onQueueAction));
+    }
+    function actionButtons(d) {
+      const btns = [];
+      if (["PENDING", "DOWNLOADING"].includes(d.status)) btns.push(`<button class="ghost small" data-act="pause" data-id="${d.id}">Pausar</button>`);
+      if (d.status === "PAUSED") btns.push(`<button class="small" data-act="resume" data-id="${d.id}">Reanudar</button>`);
+      if (["FAILED", "CANCELED"].includes(d.status)) btns.push(`<button class="small" data-act="retry" data-id="${d.id}">Reintentar</button>`);
+      if (["PENDING", "DOWNLOADING", "PAUSED"].includes(d.status)) btns.push(`<button class="ghost small" data-act="cancel" data-id="${d.id}">Cancelar</button>`);
+      if (d.status !== "DOWNLOADING") btns.push(`<button class="danger small" data-act="delete" data-id="${d.id}">Eliminar</button>`);
+      return btns.join("");
+    }
+    async function onQueueAction(ev) {
+      const id = ev.target.dataset.id, act = ev.target.dataset.act;
+      try {
+        if (act === "delete") await api(`/api/downloads/${id}`, { method: "DELETE" });
+        else await jpost(`/api/downloads/${id}/${act}`);
+        loadQueue();
+      } catch (e) { alert(e.message); }
+    }
+
+    // ---------------- Init + polling ----------------
+    loadBots();
+    setInterval(() => {
+      loadQueue();
+      if (activeBot && !$("#view-bots").hidden && !$("#console").hidden) loadMessages();
+    }, 4000);
+  </script>
+</body>
+</html>

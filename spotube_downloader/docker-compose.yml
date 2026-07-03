@@ -1,0 +1,56 @@
+services:
+  spotube-downloader:
+    build: .
+    container_name: spotube-downloader
+    restart: unless-stopped
+    # Sin puerto publicado: el acceso es via el proxy (Traefik) en /spotube.
+    # Para acceso directo en desarrollo, descomenta y pon APP_BASE_PATH="".
+    # ports:
+    #   - "${SPOTUBE_WEB_PORT:-8080}:8080"
+    environment:
+      DATABASE_PATH: /data/queue.db
+      MUSIC_DIR: /music
+      APP_BASE_PATH: ${APP_BASE_PATH:-/spotube}
+      SPOTDL_FORMAT: mp3
+      SPOTDL_BITRATE: 192k
+      SPOTDL_THREADS: ${SPOTDL_THREADS:-1}
+      SPOTDL_AUDIO_PROVIDERS: ${SPOTDL_AUDIO_PROVIDERS:-youtube-music,youtube}
+      SPOTDL_LOG_LEVEL: ${SPOTDL_LOG_LEVEL:-INFO}
+      SPOTDL_LOG_TRACEBACKS: ${SPOTDL_LOG_TRACEBACKS:-false}
+      SPOTDL_REPROCESS_MISSING_ONLY: ${SPOTDL_REPROCESS_MISSING_ONLY:-false}
+      SPOTDL_MAX_ATTEMPTS: ${SPOTDL_MAX_ATTEMPTS:-5}
+      SPOTDL_RETRY_DELAY_SECONDS: ${SPOTDL_RETRY_DELAY_SECONDS:-120}
+      SPOTDL_RETRY_BACKOFF_FACTOR: ${SPOTDL_RETRY_BACKOFF_FACTOR:-2}
+      SPOTDL_RETRY_MAX_DELAY_SECONDS: ${SPOTDL_RETRY_MAX_DELAY_SECONDS:-900}
+      SPOTDL_RETRY_ALL_FAILURES: "true"
+      SPOTDL_SPOTIFY_MAX_RETRIES: ${SPOTDL_SPOTIFY_MAX_RETRIES:-5}
+      SPOTDL_SAVE_TIMEOUT_SECONDS: ${SPOTDL_SAVE_TIMEOUT_SECONDS:-60}
+      SPOTDL_COOKIE_FILE: ${SPOTDL_COOKIE_FILE:-}
+      SPOTDL_YT_DLP_ARGS: ${SPOTDL_YT_DLP_ARGS:-}
+      METADATA_WORKER_SLEEP_SECONDS: "10"
+      SPOTIFY_METADATA_TIMEOUT: "8"
+      WORKER_SLEEP_SECONDS: "5"
+      NAVIDROME_URL: ${NAVIDROME_URL:-}
+      NAVIDROME_USER: ${NAVIDROME_USER:-}
+      NAVIDROME_PASSWORD: ${NAVIDROME_PASSWORD:-}
+      NAVIDROME_SCAN_DEBOUNCE_SECONDS: ${NAVIDROME_SCAN_DEBOUNCE_SECONDS:-30}
+    volumes:
+      - ${MUSIC_HOST_DIR:-./music}:/music
+      - ${SPOTDL_COOKIE_HOST_DIR:-./cookies_store}:/cookies:ro
+      - spotube_queue:/data
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spotube.rule=PathPrefix(`/spotube`)"
+      - "traefik.http.routers.spotube.entrypoints=web"
+      - "traefik.http.routers.spotube.middlewares=spotube-strip"
+      - "traefik.http.middlewares.spotube-strip.stripprefix.prefixes=/spotube"
+      - "traefik.http.services.spotube.loadbalancer.server.port=8080"
+
+volumes:
+  spotube_queue:
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,23 @@
+services:
+  launcher:
+    build: .
+    container_name: launcher
+    restart: unless-stopped
+    # Sin puerto publicado: se sirve en la raiz "/" a traves del proxy (Traefik).
+    environment:
+      PORT: 8000
+      CONFIG_PATH: ${CONFIG_PATH:-/app/config.json}
+    # Para editar la lista de apps sin reconstruir la imagen, monta tu config.json:
+    # volumes:
+    #   - ./config.json:/app/config.json:ro
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.launcher.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.launcher.entrypoints=web"
+      - "traefik.http.services.launcher.loadbalancer.server.port=8000"
+
+networks:
+  proxy:
+    external: true
