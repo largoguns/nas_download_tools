@@ -8,8 +8,12 @@ services:
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=proxy
       - --entryPoints.web.address=:80
-      # OBLIGAMOS A TRAEFIK A USAR LA API 1.40 VIA PARÁMETRO DE COMANDO
-      - --providers.docker.endpoint=unix:///var/run/docker.sock?apiVersion=1.40
+      # Esta es la flag nativa oficial de Traefik v3 para solucionar este problema:
+      - --providers.docker.allowEmptyServices=true
+    environment:
+      - PROXY_HTTP_PORT=${PROXY_HTTP_PORT:-80}
+      # Forzamos la negociación pasándole la versión de la API al cliente interno de Go
+      - DOCKER_API_VERSION=1.40
     ports:
       - "${PROXY_HTTP_PORT:-80}:80"
     volumes:
