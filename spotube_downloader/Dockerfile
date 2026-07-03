@@ -52,8 +52,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
     WORKER_SLEEP_SECONDS=5
 
 WORKDIR /app
-COPY app.py requirements.txt ./
-COPY templates ./templates
+
+# LA CORRECCIÓN: Copiamos todo el contenido del repo (incluyendo navidrome.py o tus módulos extras)
+COPY . .
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
     && mkdir -p /music /data \
