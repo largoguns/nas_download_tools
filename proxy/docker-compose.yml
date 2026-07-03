@@ -9,7 +9,9 @@ services:
       - --providers.docker.network=proxy
       - --entryPoints.web.address=:80
     environment:
-      # Pasamos la versión de la API directamente como variable nativa del contenedor
+      - PROXY_HTTP_PORT=${PROXY_HTTP_PORT:-80}
+      # Estas dos variables configuran de forma manual y forzada la comunicación con el socket
+      - DOCKER_HOST=unix:///var/run/docker.sock
       - DOCKER_API_VERSION=1.40
     ports:
       - "${PROXY_HTTP_PORT:-80}:80"
