@@ -377,7 +377,8 @@ def control_state(download_id: int) -> str:
 
 def process_download(download: dict[str, Any]) -> None:
     download_id = download["id"]
-    folder = DOWNLOAD_DIR / sanitize_path_segment(download["bot_title"], "bot")
+    # Los ficheros van directos a DOWNLOAD_DIR, sin subcarpeta por bot.
+    folder = DOWNLOAD_DIR
     folder.mkdir(parents=True, exist_ok=True)
 
     last_update = 0.0
