@@ -87,6 +87,12 @@ Descarga musica con `spotdl`. Refresca **Navidrome** al terminar.
 | `NAVIDROME_PASSWORD`              | No   | (vacio) | Contrasena de ese usuario (**secreto**). |
 | `NAVIDROME_SCAN_DEBOUNCE_SECONDS` | No   | `30`    | Espera tras la ultima descarga antes de un unico escaneo. |
 
+### Busqueda en el catalogo (pantalla "Busqueda")
+
+Usa la **API publica de Deezer**: sin credenciales, sin configuracion y sin
+Premium. No hay variables que rellenar. Muestra resultados (titulo/artista/
+caratula) y, al anadir, spotdl descarga la mejor coincidencia de esa query.
+
 ### Ajustes de spotdl (opcionales, tienen buen defecto)
 
 | Variable | Defecto | Descripcion |

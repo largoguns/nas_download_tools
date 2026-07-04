@@ -17,6 +17,7 @@ from urllib.parse import urlencode, urlparse
 
 from flask import Flask, jsonify, render_template, request
 
+import deezer
 import navidrome
 
 
@@ -246,6 +247,8 @@ def init_db():
             "progress_title": "TEXT",
             "missing_only": "INTEGER NOT NULL DEFAULT 0",
             "control_status": "TEXT",
+            "group_id": "TEXT",
+            "group_title": "TEXT",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -506,6 +509,39 @@ def enqueue_download(url):
         return cursor.lastrowid
 
 
+def enqueue_query(
+    query,
+    title=None,
+    artist=None,
+    image=None,
+    metadata_type="track",
+    group_id=None,
+    group_title=None,
+):
+    """Encola una descarga a partir de una query de texto (resultado de catalogo).
+
+    spotdl acepta 'artista - titulo' y busca la mejor coincidencia. Los metadatos
+    (titulo/artista/caratula) se guardan ya rellenos desde el catalogo y se marca
+    metadata_status='COMPLETED' para que el worker de metadatos no intente raspar
+    Spotify (no hay URL que raspar). ``group_id``/``group_title`` agrupan las pistas
+    de un mismo album en la cola.
+    """
+    now = utc_now()
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO downloads (
+                url, status, created_at, updated_at, metadata_type, metadata_status,
+                metadata_title, metadata_artist, metadata_image_url, metadata_updated_at,
+                group_id, group_title
+            )
+            VALUES (?, 'PENDING', ?, ?, ?, 'COMPLETED', ?, ?, ?, ?, ?, ?)
+            """,
+            (query, now, now, metadata_type, title, artist, image, now, group_id, group_title),
+        )
+        return cursor.lastrowid
+
+
 def list_downloads(limit):
     with get_connection() as connection:
         rows = connection.execute(
@@ -519,7 +555,8 @@ def list_downloads(limit):
                    metadata_title, metadata_artist, metadata_type,
                    metadata_image_url, metadata_status, metadata_error,
                    metadata_updated_at,
-                   progress_current, progress_total, progress_title
+                   progress_current, progress_total, progress_title,
+                   group_id, group_title
              FROM downloads
              ORDER BY
                 CASE COALESCE(control_status, status)
@@ -1796,6 +1833,51 @@ def add_download():
 
     download_id = enqueue_download(url)
     return jsonify({"ok": True, "id": download_id, "status": "PENDING"}), 201
+
+
+@app.get("/search")
+def search():
+    query = (request.args.get("q") or "").strip()
+    if not query:
+        return jsonify({"ok": False, "error": "Escribe algo que buscar."}), 400
+    try:
+        return jsonify({"ok": True, "results": deezer.search(query)})
+    except deezer.CatalogError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.post("/catalog/add")
+def catalog_add():
+    payload = request.get_json(silent=True) or {}
+    kind = str(payload.get("kind", "track"))
+    title = (payload.get("title") or "").strip() or None
+    artist = (payload.get("artist") or "").strip() or None
+    image = (payload.get("image") or "").strip() or None
+
+    try:
+        if kind == "album":
+            album_id = payload.get("album_id")
+            if album_id in (None, ""):
+                return jsonify({"ok": False, "error": "Falta album_id."}), 400
+            tracks = deezer.album_tracks(album_id)
+            if not tracks:
+                return jsonify({"ok": False, "error": "El album no tiene pistas."}), 400
+            group_id = f"album-{album_id}-{utc_now()}"
+            group_title = " - ".join(p for p in [artist, title] if p) or "Álbum"
+            for track in tracks:
+                enqueue_query(
+                    track["query"], track["title"], track["artist"], image,
+                    group_id=group_id, group_title=group_title,
+                )
+            return jsonify({"ok": True, "queued": len(tracks)}), 201
+
+        query = (payload.get("query") or "").strip()
+        if not query:
+            return jsonify({"ok": False, "error": "Falta query."}), 400
+        download_id = enqueue_query(query, title, artist, image)
+        return jsonify({"ok": True, "queued": 1, "id": download_id}), 201
+    except deezer.CatalogError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
 
 @app.get("/status")

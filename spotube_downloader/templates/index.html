@@ -3,870 +3,275 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spotube Downloader</title>
+  <title>Spotube Downloader UN MOJON</title>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f6f7f9;
-      --surface: #ffffff;
-      --text: #17202a;
-      --muted: #637083;
-      --line: #dbe2ea;
-      --accent: #13795b;
-      --accent-strong: #0f6048;
-      --pending: #8a5a00;
-      --downloading: #0b5cad;
-      --completed: #13795b;
-      --failed: #b42318;
-      --paused: #6f42c1;
-      --canceled: #586474;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.5;
-    }
-
-    main {
-      width: min(1600px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 32px 0;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-
-    h1,
-    h2 {
-      margin: 0;
-      letter-spacing: 0;
-    }
-
-    h1 {
-      font-size: clamp(1.75rem, 4vw, 2.35rem);
-    }
-
-    h2 {
-      font-size: 1rem;
-    }
-
-    .status-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      background: var(--completed);
-      box-shadow: 0 0 0 5px rgba(19, 121, 91, 0.12);
-      flex: 0 0 auto;
-    }
-
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 18px;
-      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-    }
-
-    form {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-    }
-
-    label {
-      display: block;
-      margin-bottom: 8px;
-      color: var(--muted);
-      font-size: 0.9rem;
-      font-weight: 600;
-    }
-
-    input,
-    button {
-      min-height: 44px;
-      border-radius: 6px;
-      font: inherit;
-    }
-
-    input {
-      width: 100%;
-      border: 1px solid var(--line);
-      padding: 0 12px;
-      background: #fff;
-      color: var(--text);
-    }
-
-    input:focus {
-      border-color: var(--accent);
-      outline: 3px solid rgba(19, 121, 91, 0.16);
-    }
-
-    button {
-      border: 0;
-      padding: 0 18px;
-      background: var(--accent);
-      color: #fff;
-      cursor: pointer;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    button:hover {
-      background: var(--accent-strong);
-    }
-
-    button:disabled {
-      cursor: progress;
-      opacity: 0.7;
-    }
-
-    .message {
-      min-height: 22px;
-      margin-top: 12px;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .message.error {
-      color: var(--failed);
-    }
-
-    .queue-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin: 24px 0 10px;
-    }
-
-    .updated-at {
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 1180px;
-    }
-
-    th,
-    td {
-      padding: 12px 10px;
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-      vertical-align: top;
-    }
-
-    th {
-      color: var(--muted);
-      font-size: 0.78rem;
-      text-transform: uppercase;
-    }
-
-    td {
-      font-size: 0.92rem;
-    }
-
-    .queue-row {
-      --progress-value: 0%;
-      --progress-color: var(--line);
-      cursor: pointer;
-    }
-
-    .queue-row td {
-      position: relative;
-      border-bottom: 0;
-    }
-
-    .queue-row td::after {
-      content: "";
-      position: absolute;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      height: 3px;
-      background:
-        linear-gradient(
-          to right,
-          var(--progress-color) var(--progress-value),
-          var(--line) var(--progress-value)
-        );
-    }
-
-    .expand-cell {
-      width: 42px;
-      text-align: center;
-    }
-
-    .expand-button {
-      display: inline-grid;
-      width: 30px;
-      min-height: 30px;
-      place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 0;
-      background: #fff;
-      color: var(--text);
-      font-size: 0.95rem;
-      line-height: 1;
-    }
-
-    .expand-button:hover {
-      background: #eef2f6;
-      color: var(--text);
-    }
-
-    .media-cell {
-      min-width: 380px;
-      max-width: 560px;
-    }
-
-    .media-item {
-      display: grid;
-      grid-template-columns: 64px minmax(0, 1fr);
-      gap: 12px;
-      align-items: center;
-    }
-
-    .cover {
-      width: 64px;
-      height: 64px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #eef2f6;
-      object-fit: cover;
-    }
-
-    .cover-placeholder {
-      display: grid;
-      place-items: center;
-      color: var(--muted);
-      font-size: 0.78rem;
-      font-weight: 800;
-    }
-
-    .media-title {
-      color: var(--text);
-      font-weight: 800;
-      overflow-wrap: anywhere;
-    }
-
-    .media-meta,
-    .media-link {
-      color: var(--muted);
-      font-size: 0.84rem;
-    }
-
-    .media-link {
-      display: inline-block;
-      margin-top: 3px;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-      text-decoration: none;
-    }
-
-    .media-link:hover {
-      color: var(--accent);
-      text-decoration: underline;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      min-height: 26px;
-      border-radius: 999px;
-      padding: 0 10px;
-      color: #fff;
-      font-size: 0.76rem;
-      font-weight: 700;
-    }
-
-    .badge.PENDING {
-      background: var(--pending);
-    }
-
-    .badge.DOWNLOADING {
-      background: var(--downloading);
-    }
-
-    .badge.COMPLETED {
-      background: var(--completed);
-    }
-
-    .badge.FAILED {
-      background: var(--failed);
-    }
-
-    .badge.PAUSED {
-      background: var(--paused);
-    }
-
-    .badge.CANCELED {
-      background: var(--canceled);
-    }
-
-    .progress-cell {
-      width: 190px;
-      min-width: 190px;
-    }
-
-    .progress-count {
-      color: var(--text);
-      font-weight: 800;
-      white-space: nowrap;
-    }
-
-    .progress-title {
-      max-width: 210px;
-      color: var(--muted);
-      font-size: 0.8rem;
-      overflow-wrap: anywhere;
-    }
-
-    .tracks-row[hidden] {
-      display: none;
-    }
-
-    .tracks-row td {
-      padding: 0 10px 14px 52px;
-      background: #fbfcfd;
-    }
-
-    .tracks-panel {
-      border: 1px solid var(--line);
-      border-top: 0;
-      border-radius: 0 0 8px 8px;
-      overflow: hidden;
-    }
-
-    .tracks-table {
-      min-width: 0;
-      border-collapse: collapse;
-      background: #fff;
-    }
-
-    .tracks-table th,
-    .tracks-table td {
-      padding: 9px 12px;
-      border-bottom: 1px solid var(--line);
-      vertical-align: middle;
-    }
-
-    .tracks-table tr:last-child td {
-      border-bottom: 0;
-    }
-
-    .track-position {
-      width: 70px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .track-title {
-      font-weight: 700;
-      overflow-wrap: anywhere;
-    }
-
-    .track-artist {
-      color: var(--muted);
-      font-size: 0.82rem;
-    }
-
-    .track-status {
-      width: 150px;
-      white-space: nowrap;
-    }
-
-    .track-status-badge {
-      display: inline-flex;
-      align-items: center;
-      min-height: 24px;
-      border-radius: 999px;
-      padding: 0 9px;
-      background: #eef2f6;
-      color: var(--text);
-      font-size: 0.74rem;
-      font-weight: 800;
-    }
-
-    .track-status-badge.EXISTS,
-    .track-status-badge.COMPLETED {
-      background: rgba(19, 121, 91, 0.12);
-      color: var(--completed);
-    }
-
-    .track-status-badge.DOWNLOADING {
-      background: rgba(11, 92, 173, 0.12);
-      color: var(--downloading);
-    }
-
-    .track-status-badge.FAILED {
-      background: rgba(180, 35, 24, 0.12);
-      color: var(--failed);
-    }
-
-    .error-cell {
-      width: 70px;
-      text-align: center;
-    }
-
-    .error-button {
-      display: inline-grid;
-      width: 34px;
-      min-height: 34px;
-      place-items: center;
-      border: 1px solid rgba(180, 35, 24, 0.28);
-      border-radius: 999px;
-      padding: 0;
-      background: #fff;
-      color: var(--failed);
-      font-size: 1rem;
-      line-height: 1;
-      font-weight: 900;
-    }
-
-    .error-button:hover {
-      background: rgba(180, 35, 24, 0.08);
-      color: var(--failed);
-    }
-
-    .error-button:focus-visible,
-    .action-button:focus-visible,
-    .modal-close:focus-visible {
-      outline: 3px solid rgba(180, 35, 24, 0.18);
-      outline-offset: 2px;
-    }
-
-    .action-cell {
-      min-width: 160px;
-    }
-
-    .action-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-
-    .action-button {
-      display: inline-grid;
-      width: 34px;
-      min-height: 34px;
-      place-items: center;
-      padding: 0;
-      line-height: 1;
-    }
-
-    .action-button svg {
-      width: 18px;
-      height: 18px;
-      fill: none;
-      stroke: currentColor;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      stroke-width: 2;
-    }
-
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-      padding: 0;
-    }
-
-    .action-button.secondary {
-      border: 1px solid var(--line);
-      background: #fff;
-      color: var(--text);
-    }
-
-    .action-button.secondary:hover {
-      background: #eef2f6;
-      color: var(--text);
-    }
-
-    .action-button.danger {
-      background: var(--failed);
-    }
-
-    .action-button.danger:hover {
-      background: #8f1c13;
-    }
-
-    .attempt-cell {
-      white-space: nowrap;
-    }
-
-    .empty {
-      color: var(--muted);
-      padding: 18px 0 4px;
-    }
-
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 20;
-      display: grid;
-      place-items: center;
-      padding: 18px;
-      background: rgba(23, 32, 42, 0.52);
-    }
-
-    .modal-backdrop[hidden] {
-      display: none;
-    }
-
-    .modal {
-      width: min(900px, 100%);
-      max-height: min(760px, calc(100vh - 36px));
-      overflow: hidden;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
-      box-shadow: 0 24px 70px rgba(16, 24, 40, 0.26);
-    }
-
-    .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .modal-title {
-      min-width: 0;
-      font-size: 0.96rem;
-      font-weight: 800;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .modal-close {
-      display: inline-grid;
-      width: 34px;
-      min-height: 34px;
-      place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 0;
-      background: #fff;
-      color: var(--text);
-      font-size: 1.2rem;
-      line-height: 1;
-    }
-
-    .modal-body {
-      padding: 16px;
-    }
-
-    .error-detail {
-      max-height: min(600px, calc(100vh - 170px));
-      margin: 0;
-      overflow: auto;
-      border-radius: 6px;
-      padding: 14px;
-      background: #111827;
-      color: #f8fafc;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size: 0.82rem;
-      line-height: 1.45;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-
-    @media (max-width: 760px) {
-      main {
-        width: min(100% - 16px, 1600px);
-        padding: 20px 0;
-      }
-
-      .panel {
-        padding: 12px;
-      }
-
-      header {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .queue-header {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      form {
-        grid-template-columns: 1fr;
-      }
-
-      button {
-        width: 100%;
-      }
-
-      .table-wrap {
-        overflow: visible;
-      }
-
-      table,
-      tbody {
-        display: block;
-        min-width: 0;
-        width: 100%;
-      }
-
-      thead {
-        display: none;
-      }
-
-      .queue-row {
-        position: relative;
-        display: grid;
-        grid-template-columns: 34px minmax(0, 1fr);
-        gap: 10px 12px;
-        padding: 14px 0 16px;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .queue-row::after {
-        content: "";
-        position: absolute;
-        right: 0;
-        bottom: -1px;
-        left: 0;
-        height: 4px;
-        background:
-          linear-gradient(
-            to right,
-            var(--progress-color) var(--progress-value),
-            var(--line) var(--progress-value)
-          );
-      }
-
-      .queue-row td,
-      .tracks-row td {
-        display: block;
-        padding: 0;
-        border-bottom: 0;
-      }
-
-      .queue-row td::after {
-        display: none;
-      }
-
-      .expand-cell {
-        grid-column: 1;
-        grid-row: 1;
-        width: 34px;
-      }
-
-      .id-cell {
-        grid-column: 1;
-        grid-row: 2;
-        color: var(--muted);
-        font-size: 0.82rem;
-        text-align: center;
-      }
-
-      .status-cell {
-        grid-column: 2;
-        grid-row: 1;
-      }
-
-      .media-cell,
-      .progress-cell,
-      .attempt-cell,
-      .date-cell,
-      .error-cell,
-      .action-cell {
-        grid-column: 1 / -1;
-        width: auto;
-        min-width: 0;
-        max-width: none;
-      }
-
-      .media-item {
-        grid-template-columns: 56px minmax(0, 1fr);
-      }
-
-      .cover {
-        width: 56px;
-        height: 56px;
-      }
-
-      .progress-title {
-        max-width: none;
-      }
-
-      .attempt-cell,
-      .date-cell {
-        color: var(--muted);
-        font-size: 0.82rem;
-      }
-
-      .attempt-cell::before {
-        content: "Intentos: ";
-        font-weight: 700;
-      }
-
-      .date-cell:nth-of-type(7)::before {
-        content: "Creado: ";
-        font-weight: 700;
-      }
-
-      .date-cell:nth-of-type(8)::before {
-        content: "Actualizado: ";
-        font-weight: 700;
-      }
-
-      .error-cell {
-        text-align: left;
-      }
-
-      .action-group {
-        display: flex;
-        flex-wrap: wrap;
-      }
-
-      .tracks-row {
-        display: block;
-      }
-
-      .tracks-row[hidden] {
-        display: none;
-      }
-
-      .tracks-row td {
-        background: transparent;
-        padding: 0 0 12px;
-      }
-
-      .tracks-panel {
-        border-top: 1px solid var(--line);
-        border-radius: 8px;
-        margin: 10px 0 4px;
-      }
-
-      .tracks-table,
-      .tracks-table tbody,
-      .tracks-table tr,
-      .tracks-table td {
-        display: block;
-        width: 100%;
-      }
-
-      .tracks-table thead {
-        display: none;
-      }
-
-      .tracks-table tr {
-        padding: 10px 12px;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .tracks-table tr:last-child {
-        border-bottom: 0;
-      }
-
-      .tracks-table td {
-        padding: 0;
-        border-bottom: 0;
-      }
-
-      .track-position,
-      .track-status {
-        width: auto;
-        margin-bottom: 5px;
-      }
-
-      .error-button,
-      .expand-button,
-      .modal-close {
-        width: 34px;
-      }
-    }
+      --bg: #f5f6f8; --surface: #ffffff; --text: #17202a; --muted: #667085;
+      --line: #d8dee8; --accent: #0f766e; --accent-strong: #115e59;
+      --accent-soft: rgba(15, 118, 110, 0.12);
+      --blue: #1d4ed8; --red: #b42318; --amber: #a15c07; --violet: #6d28d9; --green: #16794c;
+      --radius: 8px;
+      /* Estados usados por el JS (getProgressColor / badges) */
+      --pending: var(--amber); --downloading: var(--blue); --completed: var(--green);
+      --failed: var(--red); --paused: var(--violet); --canceled: var(--muted);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.45; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(1.3rem, 3.4vw, 1.8rem); }
+    h2 { font-size: 1rem; }
+    .muted { color: var(--muted); } .small { font-size: 0.88rem; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+    /* ---- Carcasa con barra lateral (comun a la familia) ---- */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 224px; flex: none; background: var(--surface); border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; }
+    .brand { padding: 6px 10px 14px; } .brand strong { font-size: 1.05rem; }
+    .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: var(--radius); padding: 10px 12px; font: inherit; font-weight: 750; cursor: pointer; min-height: 44px; }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent-strong); }
+    .nav-item .nav-ico { font-size: 1.1rem; line-height: 1; }
+    .content { flex: 1 1 auto; min-width: 0; width: min(1180px, 100%); margin: 0 auto; padding: clamp(12px, 2.6vw, 24px); }
+    .content-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .stack { display: grid; gap: 16px; }
+
+    /* ---- Paneles ---- */
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(12px, 2.4vw, 16px); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
+    .panel > h2 { margin-bottom: 12px; }
+    .queue-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .updated-at { color: var(--muted); font-size: 0.82rem; font-weight: 600; }
+
+    /* ---- Formulario ---- */
+    label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
+    input, button { min-height: 42px; border-radius: 6px; font: inherit; }
+    input { width: 100%; border: 1px solid var(--line); padding: 0 10px; background: #fff; color: var(--text); }
+    input:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); }
+    button { border: 0; padding: 0 14px; background: var(--accent); color: #fff; cursor: pointer; font-weight: 750; white-space: nowrap; }
+    button:hover { background: var(--accent-strong); }
+    button:disabled { cursor: not-allowed; opacity: 0.58; }
+    #add-form { display: grid; gap: 10px; grid-template-columns: 1fr; align-items: end; }
+    @media (min-width: 640px) { #add-form { grid-template-columns: minmax(0, 1fr) auto; } }
+    .message { min-height: 22px; margin-top: 10px; color: var(--muted); font-size: 0.92rem; }
+    .message.error { color: var(--red); }
+    .empty { border: 1px dashed var(--line); border-radius: var(--radius); padding: 18px; color: var(--muted); background: #fff; text-align: center; }
+
+    .status-dot { width: 12px; height: 12px; border-radius: 999px; background: var(--green); box-shadow: 0 0 0 3px rgba(22, 121, 76, 0.15); }
+
+    /* ---- Tabla de cola ---- */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    thead th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); font-weight: 800; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    tbody td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    .queue-row:hover { background: #f9fbfb; }
+    .id-cell { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .attempt-cell, .date-cell { color: var(--muted); white-space: nowrap; font-size: 0.84rem; }
+
+    /* ---- Pildora de estado ---- */
+    .badge { display: inline-flex; align-items: center; min-height: 24px; border-radius: 999px; padding: 0 10px; background: #eef2f6; color: var(--muted); font-size: 0.74rem; font-weight: 850; white-space: nowrap; }
+    .badge.PENDING { color: var(--pending); }
+    .badge.DOWNLOADING { color: var(--downloading); }
+    .badge.COMPLETED { color: var(--completed); }
+    .badge.FAILED { color: var(--failed); }
+    .badge.PAUSED { color: var(--paused); }
+    .badge.CANCELED { color: var(--canceled); }
+
+    /* ---- Media (portada + titulo) ---- */
+    .media-item { display: flex; gap: 10px; align-items: center; min-width: 220px; }
+    .cover { width: 48px; height: 48px; border-radius: 6px; border: 1px solid var(--line); background: #eef2f6; object-fit: cover; flex: none; }
+    .cover-placeholder { display: grid; place-items: center; color: var(--muted); font-weight: 800; font-size: 0.8rem; }
+    .media-title { font-weight: 800; overflow-wrap: anywhere; }
+    .media-meta { color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
+    .media-link { color: var(--blue); font-size: 0.8rem; text-decoration: none; font-weight: 700; }
+    .media-link:hover { text-decoration: underline; }
+
+    /* ---- Progreso (barra fina bajo el contador) ---- */
+    .progress-cell { position: relative; min-width: 130px; padding-bottom: 16px; }
+    .progress-count { font-weight: 750; font-variant-numeric: tabular-nums; }
+    .progress-title { color: var(--muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+    .progress-cell::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 7px; height: 3px; border-radius: 999px; background: #e6ebf2; }
+    .progress-cell::before { content: ""; position: absolute; left: 10px; bottom: 7px; height: 3px; border-radius: 999px; width: var(--progress-value, 0%); max-width: calc(100% - 20px); background: var(--progress-color, var(--line)); z-index: 1; }
+
+    /* ---- Botones de accion (iconos) ---- */
+    .action-cell { white-space: nowrap; }
+    .action-group { display: flex; gap: 6px; justify-content: flex-end; }
+    .action-button { min-height: 34px; width: 34px; padding: 0; display: inline-grid; place-items: center; background: var(--accent); border: 1px solid var(--accent); border-radius: 6px; color: #fff; cursor: pointer; }
+    .action-button:hover { background: var(--accent-strong); }
+    .action-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .action-button.secondary { background: #fff; color: var(--text); border-color: var(--line); }
+    .action-button.secondary:hover { background: #eef2f6; }
+    .action-button.danger { background: var(--red); border-color: var(--red); color: #fff; }
+    .action-button.danger:hover { background: #912018; }
+
+    .error-cell { text-align: center; }
+    .error-button { min-height: 28px; width: 28px; padding: 0; border-radius: 999px; background: var(--red); color: #fff; font-weight: 900; cursor: pointer; border: 0; }
+
+    .expand-cell { width: 40px; }
+    .expand-button { min-height: 28px; width: 28px; padding: 0; border-radius: 6px; background: #fff; border: 1px solid var(--line); color: var(--muted); cursor: pointer; font-weight: 800; }
+    .expand-button:hover { background: #eef2f6; }
+
+    /* ---- Detalle por pista ---- */
+    .tracks-row > td { padding: 0 10px 12px; }
+    .tracks-panel { background: #f9fbfb; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+    .tracks-table { font-size: 0.84rem; }
+    .tracks-table thead th { border-bottom: 1px solid var(--line); }
+    .tracks-table td { padding: 6px 8px; border-bottom: 1px solid #eef2f6; }
+    .track-position { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .track-title { font-weight: 700; }
+    .track-artist { color: var(--muted); font-size: 0.8rem; }
+    .track-status-badge { display: inline-flex; min-height: 20px; align-items: center; border-radius: 999px; padding: 0 8px; background: #eef2f6; color: var(--muted); font-size: 0.7rem; font-weight: 800; }
+    .track-status-badge.PENDING { color: var(--pending); }
+    .track-status-badge.DOWNLOADING { color: var(--downloading); }
+    .track-status-badge.COMPLETED { color: var(--completed); }
+    .track-status-badge.FAILED { color: var(--failed); }
+    .track-status-badge.EXISTS { color: var(--muted); }
+
+    /* ---- Modal de error ---- */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(16, 24, 40, 0.45); display: grid; place-items: center; padding: 16px; z-index: 80; }
+    .modal-backdrop[hidden] { display: none; }
+    .modal { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--line); width: min(640px, 100%); max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .modal-title { font-weight: 800; }
+    .modal-close { min-height: 32px; width: 32px; padding: 0; background: #fff; border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer; }
+    .modal-body { padding: 16px; overflow: auto; }
+    .error-detail { white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; margin: 0; color: var(--red); }
+
+    /* ---- Responsive: barra lateral pasa a inferior ---- */
+    @media (max-width: 820px) {
+      .app { flex-direction: column; }
+      .sidebar { position: fixed; bottom: 0; left: 0; right: 0; top: auto; width: auto; height: auto; flex-direction: row; gap: 4px; border-right: 0; border-top: 1px solid var(--line); padding: 6px; z-index: 60; }
+      .brand { display: none; }
+      .nav-item { flex-direction: column; gap: 2px; font-size: 0.72rem; padding: 6px 2px; justify-content: center; text-align: center; min-height: 52px; }
+      .nav-item .nav-ico { font-size: 1.25rem; }
+      .content { width: 100%; padding-bottom: 78px; }
+    }
+
+    /* ---- Vistas / navegacion ---- */
+    .view[hidden] { display: none; }
+    .nav-item .nav-label { flex: 1 1 auto; }
+    .nav-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 0.72rem; font-weight: 800; display: none; align-items: center; justify-content: center; }
+    .nav-badge.show { display: inline-flex; }
+    #search-form { display: grid; gap: 10px; grid-template-columns: 1fr; align-items: end; }
+    @media (min-width: 640px) { #search-form { grid-template-columns: minmax(0, 1fr) auto; } }
+    button.small { min-height: 34px; padding: 2px 12px; font-size: 0.82rem; }
+    .ghost { border: 1px solid var(--line); background: #fff; color: var(--text); }
+    .ghost:hover { background: #eef2f6; }
+
+    /* ---- Resultados de busqueda (cuadricula) ---- */
+    #search-results { display: grid; gap: 22px; }
+    .results-heading { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 800; margin-bottom: 10px; }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; display: flex; flex-direction: column; }
+    .card-cover { position: relative; aspect-ratio: 1 / 1; background: #eef2f6; }
+    .card-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .card-cover .cover-ph { width: 100%; height: 100%; display: grid; place-items: center; font-size: 2rem; }
+    .card-icon { position: absolute; top: 6px; left: 6px; width: 26px; height: 26px; border-radius: 999px; background: rgba(255, 255, 255, 0.92); display: grid; place-items: center; font-size: 0.95rem; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.25); }
+    .card-body { padding: 8px 10px 6px; flex: 1 1 auto; }
+    .card-title { font-weight: 800; font-size: 0.9rem; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .card-artist { color: var(--muted); font-size: 0.8rem; margin-top: 2px; overflow-wrap: anywhere; }
+    .card-add { width: calc(100% - 20px); margin: 0 10px 10px; }
+
+    /* ---- Grupo de album en la cola ---- */
+    .group-row { background: #eef4f3; }
+    .group-row:hover { background: #e7f0ef; }
+    .group-cell { padding: 10px; }
+    .group-main { display: flex; align-items: center; gap: 12px; }
+    .group-main .cover { width: 44px; height: 44px; }
+    .group-main > .badge { margin-left: auto; }
+    .group-child > td:first-child { border-left: 3px solid var(--accent-soft); }
   </style>
 </head>
 <body>
-  <main>
-    <header>
-      <div>
-        <h1>Spotube Downloader</h1>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>Spotube</strong>
+        <div class="muted small">Musica</div>
       </div>
-      <span class="status-dot" title="Worker activo" aria-label="Worker activo"></span>
-    </header>
+      <button class="nav-item active" type="button" data-view="busqueda">
+        <span class="nav-ico">&#128269;</span><span class="nav-label">Búsqueda</span>
+      </button>
+      <button class="nav-item" type="button" data-view="descargas">
+        <span class="nav-ico">&#11015;</span><span class="nav-label">Descargas</span>
+        <span id="queueBadge" class="nav-badge">0</span>
+      </button>
+    </aside>
 
-    <section class="panel" aria-labelledby="add-title">
-      <h2 id="add-title">Añadir a la cola</h2>
-      <form id="add-form" autocomplete="off">
-        <div>
-          <label for="url">URL de Spotify</label>
-          <input
-            id="url"
-            name="url"
-            type="url"
-            inputmode="url"
-            placeholder="https://open.spotify.com/playlist/..."
-            required
-          >
-        </div>
-        <button id="add-button" type="submit">Añadir</button>
-      </form>
-      <div id="message" class="message" role="status" aria-live="polite"></div>
-    </section>
+    <main class="content">
+      <div class="content-head">
+        <h1 id="viewTitle">Búsqueda</h1>
+        <span class="status-dot" title="Worker activo" aria-label="Worker activo"></span>
+      </div>
 
-    <section aria-labelledby="queue-title">
-      <div class="queue-header">
-        <h2 id="queue-title">Estado de la cola</h2>
-        <span id="updated-at" class="updated-at"></span>
-      </div>
-      <div class="panel">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th></th>
-                <th>ID</th>
-                <th>Estado</th>
-                <th>Contenido</th>
-                <th>Progreso</th>
-                <th>Intentos</th>
-                <th>Creado</th>
-                <th>Actualizado</th>
-                <th>Error</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody id="queue-body"></tbody>
-          </table>
-        </div>
-        <div id="empty-state" class="empty" hidden>Sin descargas en cola.</div>
-      </div>
-    </section>
-  </main>
+      <!-- ===================== BÚSQUEDA ===================== -->
+      <section id="view-busqueda" class="view stack">
+        <section class="panel" aria-labelledby="search-title">
+          <h2 id="search-title">Buscar en Spotify</h2>
+          <form id="search-form" autocomplete="off">
+            <div>
+              <label for="search-input">Título, álbum, artista o enlace de Spotify</label>
+              <input id="search-input" type="text" placeholder="p. ej. Daft Punk Discovery — o pega un enlace de Spotify">
+            </div>
+            <button id="search-button" type="submit">Buscar</button>
+          </form>
+          <div id="search-message" class="message" role="status" aria-live="polite"></div>
+        </section>
+        <section class="panel">
+          <div id="search-results" class="list"></div>
+        </section>
+      </section>
+
+      <!-- ===================== DESCARGAS ===================== -->
+      <section id="view-descargas" class="view stack" hidden>
+        <section class="panel" aria-labelledby="add-title">
+          <h2 id="add-title">Añadir por enlace</h2>
+          <form id="add-form" autocomplete="off">
+            <div>
+              <label for="url">URL de Spotify (canción, álbum o playlist)</label>
+              <input
+                id="url"
+                name="url"
+                type="url"
+                inputmode="url"
+                placeholder="https://open.spotify.com/playlist/..."
+                required
+              >
+            </div>
+            <button id="add-button" type="submit">Añadir</button>
+          </form>
+          <div id="message" class="message" role="status" aria-live="polite"></div>
+        </section>
+
+        <section aria-labelledby="queue-title">
+          <div class="queue-header">
+            <h2 id="queue-title">Estado de la cola</h2>
+            <span id="updated-at" class="updated-at"></span>
+          </div>
+          <div class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>ID</th>
+                    <th>Estado</th>
+                    <th>Contenido</th>
+                    <th>Progreso</th>
+                    <th>Intentos</th>
+                    <th>Creado</th>
+                    <th>Actualizado</th>
+                    <th>Error</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="queue-body"></tbody>
+              </table>
+            </div>
+            <div id="empty-state" class="empty" hidden>Sin descargas en cola.</div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
 
   <div id="error-modal" class="modal-backdrop" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="error-modal-title">
@@ -1280,39 +685,128 @@
       return row;
     }
 
+    function buildDownloadRows(item, opts = {}) {
+      const row = document.createElement("tr");
+      const expanded = expandedDownloads.has(String(item.id));
+      row.className = "queue-row" + (opts.child ? " group-child" : "");
+      row.dataset.downloadId = item.id;
+      if (opts.groupId) row.dataset.group = opts.groupId;
+      if (opts.hidden) row.hidden = true;
+      row.style.setProperty("--progress-value", `${getProgressPercent(item)}%`);
+      row.style.setProperty("--progress-color", getProgressColor(item));
+
+      if (opts.child) {
+        const spacer = document.createElement("td");
+        spacer.className = "expand-cell";
+        row.appendChild(spacer);
+      } else {
+        row.appendChild(createExpandCell(item, expanded));
+      }
+      appendCell(row, `#${item.id}`, "id-cell");
+
+      const statusCell = document.createElement("td");
+      statusCell.className = "status-cell";
+      const badge = document.createElement("span");
+      badge.className = `badge ${item.status}`;
+      badge.textContent = statusLabels[item.status] || item.status;
+      statusCell.appendChild(badge);
+      row.appendChild(statusCell);
+
+      appendMediaCell(row, item);
+      appendProgressCell(row, item);
+      appendCell(row, `${item.attempt_count || 0}/${maxAttempts}`, "attempt-cell");
+      appendCell(row, formatDate(item.created_at), "date-cell");
+      appendCell(row, formatDate(item.updated_at), "date-cell");
+      appendErrorCell(row, item);
+      appendActionCell(row, item);
+
+      // Las pistas de un album son canciones sueltas: sin sub-detalle propio.
+      if (opts.child) return [row];
+      const detailsRow = createTrackDetailsRow(item, expanded, 10);
+      return [row, detailsRow];
+    }
+
+    function aggregateStatus(items) {
+      const s = items.map((i) => i.status);
+      if (s.some((x) => x === "DOWNLOADING")) return "DOWNLOADING";
+      if (s.some((x) => x === "PENDING" || x === "PAUSED")) return "PENDING";
+      if (s.length && s.every((x) => x === "COMPLETED")) return "COMPLETED";
+      if (s.some((x) => x === "FAILED")) return "FAILED";
+      return s[0] || "PENDING";
+    }
+
+    function buildGroupHeader(groupId, group, expanded) {
+      const row = document.createElement("tr");
+      row.className = "group-row";
+
+      const toggle = document.createElement("td");
+      toggle.className = "expand-cell";
+      const tbtn = document.createElement("button");
+      tbtn.className = "expand-button";
+      tbtn.type = "button";
+      tbtn.dataset.groupExpand = groupId;
+      tbtn.setAttribute("aria-expanded", String(expanded));
+      tbtn.textContent = expanded ? "v" : ">";
+      toggle.appendChild(tbtn);
+      row.appendChild(toggle);
+
+      const cell = document.createElement("td");
+      cell.colSpan = 9;
+      cell.className = "group-cell";
+      const done = group.items.filter((i) => i.status === "COMPLETED").length;
+      const st = aggregateStatus(group.items);
+      const img = (group.items.find((i) => i.metadata_image_url) || {}).metadata_image_url;
+      cell.innerHTML = `
+        <div class="group-main">
+          ${img ? `<img class="cover" src="${img}" alt="" loading="lazy">` : `<div class="cover cover-placeholder">AL</div>`}
+          <div>
+            <div class="media-title"></div>
+            <div class="media-meta">Álbum · ${done}/${group.items.length} completadas</div>
+          </div>
+          <span class="badge ${st}">${statusLabels[st] || st}</span>
+          <div class="action-group">
+            <button class="action-button danger" type="button" data-group-delete="${groupId}" title="Eliminar álbum"></button>
+          </div>
+        </div>`;
+      cell.querySelector(".media-title").textContent = group.title;
+      cell.querySelector("[data-group-delete]").appendChild(createIcon("delete"));
+      row.appendChild(cell);
+      return row;
+    }
+
     function renderItems(items) {
       queueBody.replaceChildren();
       errorDetails.clear();
       emptyState.hidden = items.length !== 0;
 
+      // Agrupar por group_id preservando el orden de primera aparición.
+      const groups = new Map();
+      const order = [];
       for (const item of items) {
-        const row = document.createElement("tr");
-        const expanded = expandedDownloads.has(String(item.id));
-        row.className = "queue-row";
-        row.dataset.downloadId = item.id;
-        row.style.setProperty("--progress-value", `${getProgressPercent(item)}%`);
-        row.style.setProperty("--progress-color", getProgressColor(item));
-        row.appendChild(createExpandCell(item, expanded));
-        appendCell(row, `#${item.id}`, "id-cell");
+        if (item.group_id) {
+          if (!groups.has(item.group_id)) {
+            groups.set(item.group_id, { title: item.group_title || "Álbum", items: [] });
+            order.push({ type: "group", id: item.group_id });
+          }
+          groups.get(item.group_id).items.push(item);
+        } else {
+          order.push({ type: "single", item });
+        }
+      }
 
-        const statusCell = document.createElement("td");
-        statusCell.className = "status-cell";
-        const badge = document.createElement("span");
-        badge.className = `badge ${item.status}`;
-        badge.textContent = statusLabels[item.status] || item.status;
-        statusCell.appendChild(badge);
-        row.appendChild(statusCell);
-
-        appendMediaCell(row, item);
-        appendProgressCell(row, item);
-        appendCell(row, `${item.attempt_count || 0}/${maxAttempts}`, "attempt-cell");
-        appendCell(row, formatDate(item.created_at), "date-cell");
-        appendCell(row, formatDate(item.updated_at), "date-cell");
-        appendErrorCell(row, item);
-
-        appendActionCell(row, item);
-        queueBody.appendChild(row);
-        queueBody.appendChild(createTrackDetailsRow(item, expanded, 10));
+      for (const entry of order) {
+        if (entry.type === "single") {
+          for (const r of buildDownloadRows(entry.item)) queueBody.appendChild(r);
+        } else {
+          const group = groups.get(entry.id);
+          const expanded = expandedDownloads.has(entry.id);
+          queueBody.appendChild(buildGroupHeader(entry.id, group, expanded));
+          for (const item of group.items) {
+            for (const r of buildDownloadRows(item, { child: true, hidden: !expanded, groupId: entry.id })) {
+              queueBody.appendChild(r);
+            }
+          }
+        }
       }
     }
 
@@ -1423,6 +917,28 @@
         return;
       }
 
+      const groupExpand = event.target.closest("[data-group-expand]");
+      if (groupExpand) {
+        toggleDownload(groupExpand.dataset.groupExpand);
+        return;
+      }
+
+      const groupDelete = event.target.closest("[data-group-delete]");
+      if (groupDelete) {
+        const gid = groupDelete.dataset.groupDelete;
+        const ids = [...queueBody.querySelectorAll(`tr[data-group="${gid}"]`)].map((r) => r.dataset.downloadId);
+        if (!ids.length || !window.confirm(`Eliminar el álbum (${ids.length} canciones) de la cola? No se borran archivos.`)) return;
+        try {
+          for (const id of ids) {
+            await fetch(`${API_BASE}/download/${id}`, { method: "DELETE" });
+          }
+          await loadStatus();
+        } catch (error) {
+          setMessage(error.message, true);
+        }
+        return;
+      }
+
       const actionButton = event.target.closest("[data-action]");
       if (!actionButton) {
         const row = event.target.closest(".queue-row");
@@ -1443,9 +959,174 @@
       if (event.key === "Escape" && !errorModal.hidden) closeErrorModal();
     });
 
-    loadStatus().catch((error) => setMessage(error.message, true));
+    // ---- Navegación entre vistas ----
+    const views = ["busqueda", "descargas"];
+    const viewTitles = { busqueda: "Búsqueda", descargas: "Descargas" };
+    function showView(name) {
+      views.forEach((v) => { document.getElementById(`view-${v}`).hidden = v !== name; });
+      document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+      document.getElementById("viewTitle").textContent = viewTitles[name];
+    }
+    document.querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+
+    // ---- Badge de cola ----
+    function updateQueueBadge() {
+      const active = [...queueBody.querySelectorAll(".badge")]
+        .filter((b) => b.classList.contains("PENDING") || b.classList.contains("DOWNLOADING") || b.classList.contains("PAUSED")).length;
+      const el = document.getElementById("queueBadge");
+      el.textContent = active;
+      el.classList.toggle("show", active > 0);
+    }
+
+    // ---- Búsqueda en Spotify ----
+    const searchForm = document.querySelector("#search-form");
+    const searchInput = document.querySelector("#search-input");
+    const searchButton = document.querySelector("#search-button");
+    const searchResults = document.querySelector("#search-results");
+    const typeLabelsSearch = { track: "Canción", album: "Álbum" };
+
+    async function catalogAdd(result) {
+      const response = await fetch(`${API_BASE}/catalog/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(result),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo añadir.");
+      return data;
+    }
+
+    function setSearchMessage(text, isError = false) {
+      const el = document.querySelector("#search-message");
+      el.textContent = text;
+      el.classList.toggle("error", isError);
+    }
+
+    function looksLikeSpotifyUrl(text) {
+      return /open\.spotify\.com\/|^spotify:/i.test(text);
+    }
+
+    async function enqueueUrl(url) {
+      const response = await fetch(`${API_BASE}/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo añadir.");
+      return data;
+    }
+
+    function buildCard(r) {
+      const isAlbum = r.kind === "album";
+      const icon = isAlbum ? "💿" : "🎵";
+      const card = document.createElement("div");
+      card.className = "card";
+      const cover = r.image
+        ? `<img src="${r.image}" alt="" loading="lazy">`
+        : `<div class="cover-ph">${icon}</div>`;
+      card.innerHTML = `
+        <div class="card-cover">
+          ${cover}
+          <span class="card-icon" title="${isAlbum ? "Álbum" : "Canción"}">${icon}</span>
+        </div>
+        <div class="card-body">
+          <div class="card-title"></div>
+          <div class="card-artist"></div>
+        </div>
+        <button class="small card-add" type="button">Descargar</button>`;
+      card.querySelector(".card-title").textContent = r.title || "(sin título)";
+      card.querySelector(".card-artist").textContent =
+        [r.artist, isAlbum && r.tracks ? `${r.tracks} pistas` : ""].filter(Boolean).join(" · ");
+      const btn = card.querySelector(".card-add");
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Añadiendo...";
+        try {
+          const data = await catalogAdd(r);
+          setSearchMessage(
+            isAlbum ? `Encoladas ${data.queued} canciones del álbum.` : `Añadido como descarga #${data.id}.`,
+          );
+          btn.textContent = "Añadido ✓";
+          loadStatus().catch(() => {});
+        } catch (e) {
+          setSearchMessage(e.message, true);
+          btn.disabled = false;
+          btn.textContent = "Descargar";
+        }
+      });
+      return card;
+    }
+
+    function buildSection(title, items) {
+      const section = document.createElement("div");
+      section.className = "results-section";
+      const heading = document.createElement("h3");
+      heading.className = "results-heading";
+      heading.textContent = `${title} (${items.length})`;
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      for (const r of items) grid.appendChild(buildCard(r));
+      section.append(heading, grid);
+      return section;
+    }
+
+    function renderResults(results) {
+      searchResults.replaceChildren();
+      if (!results.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "Sin resultados.";
+        searchResults.appendChild(empty);
+        return;
+      }
+      const albums = results.filter((r) => r.kind === "album");
+      const tracks = results.filter((r) => r.kind === "track");
+      if (albums.length) searchResults.appendChild(buildSection("Álbumes", albums));
+      if (tracks.length) searchResults.appendChild(buildSection("Canciones", tracks));
+    }
+
+    searchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const q = searchInput.value.trim();
+      if (!q) return;
+      searchButton.disabled = true;
+      // Si pegan un enlace de Spotify, se encola directamente (va a Descargas).
+      if (looksLikeSpotifyUrl(q)) {
+        try {
+          const data = await enqueueUrl(q);
+          setSearchMessage(`Enlace añadido como descarga #${data.id}. Míralo en Descargas.`);
+          searchInput.value = "";
+          loadStatus().catch(() => {});
+        } catch (e) {
+          setSearchMessage(e.message, true);
+        } finally {
+          searchButton.disabled = false;
+        }
+        return;
+      }
+      setSearchMessage("Buscando...");
+      try {
+        const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo buscar.");
+        renderResults(data.results || []);
+        setSearchMessage((data.results && data.results.length) ? "" : "Sin resultados.");
+      } catch (e) {
+        setSearchMessage(e.message, true);
+      } finally {
+        searchButton.disabled = false;
+      }
+    });
+
+    // ---- Init + polling ----
+    async function refreshStatus() {
+      await loadStatus();
+      updateQueueBadge();
+    }
+    refreshStatus().catch((error) => setMessage(error.message, true));
     setInterval(() => {
-      loadStatus().catch((error) => setMessage(error.message, true));
+      refreshStatus().catch((error) => setMessage(error.message, true));
     }, 5000);
   </script>
 </body>
