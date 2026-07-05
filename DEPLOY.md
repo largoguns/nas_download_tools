@@ -86,6 +86,11 @@ Descarga musica con `spotdl`. Refresca **Navidrome** al terminar.
 | `NAVIDROME_USER`                  | No   | (vacio) | Usuario de Navidrome. |
 | `NAVIDROME_PASSWORD`              | No   | (vacio) | Contrasena de ese usuario (**secreto**). |
 | `NAVIDROME_SCAN_DEBOUNCE_SECONDS` | No   | `30`    | Espera tras la ultima descarga antes de un unico escaneo. |
+| `NAVIDROME_SCAN_WAIT_SECONDS`     | No   | `180`   | Al descargar una playlist se crea/actualiza en Navidrome; espera max. a que termine el escaneo antes de emparejar las canciones. |
+
+> Al descargar una **playlist** de Spotify, ademas del escaneo se crea (o
+> actualiza, si ya existe con ese nombre) una playlist en Navidrome con las
+> canciones descargadas. Requiere `NAVIDROME_USER/PASSWORD` con permisos.
 
 ### Busqueda en el catalogo (pantalla "Busqueda")
 

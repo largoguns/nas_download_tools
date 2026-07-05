@@ -685,7 +685,43 @@ def finish_job(job_id, status, return_code=None, error=None):
         )
 
     if status == "COMPLETED":
+        on_job_completed(job_id)
+
+
+def on_job_completed(job_id):
+    """Al completar: si es una playlist, crea/actualiza la playlist en Navidrome
+    (en segundo plano, esperando al escaneo); si no, solo dispara el escaneo."""
+    with get_connection() as connection:
+        row = connection.execute(
+            "SELECT metadata_type, metadata_title FROM downloads WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+
+    if row and row["metadata_type"] == "playlist" and navidrome.enabled():
+        threading.Thread(
+            target=sync_navidrome_playlist,
+            args=(job_id, row["metadata_title"]),
+            daemon=True,
+        ).start()
+    else:
         navidrome.notify()  # nueva musica: escanea Navidrome (con debounce)
+
+
+def sync_navidrome_playlist(job_id, name):
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT title, artist FROM download_tracks
+             WHERE download_id = ? AND status IN ('COMPLETED', 'EXISTS')
+             ORDER BY position
+            """,
+            (job_id,),
+        ).fetchall()
+    tracks = [{"title": row["title"], "artist": row["artist"]} for row in rows]
+    if not tracks:
+        logging.info("Playlist #%s sin pistas completadas; no se crea en Navidrome.", job_id)
+        return
+    navidrome.sync_playlist(name or "Playlist", tracks)
 
 
 def update_job_progress(job_id, current=0, total=0, title=None):

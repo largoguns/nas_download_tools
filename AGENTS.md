@@ -189,8 +189,11 @@ Herramientas y destino:
   `JELLYFIN_URL`, `JELLYFIN_API_KEY`, `JELLYFIN_LIBRARY_ID` (opcional),
   `JELLYFIN_REFRESH_DEBOUNCE_SECONDS`.
 - **Spotube-Downloader** -> Navidrome (`navidrome.py`, Subsonic `startScan` con
-  auth por token salt+md5). Vars: `NAVIDROME_URL`, `NAVIDROME_USER`,
-  `NAVIDROME_PASSWORD`, `NAVIDROME_SCAN_DEBOUNCE_SECONDS`.
+  auth por token salt+md5). Al descargar una **playlist** de Spotify, ademas crea
+  o actualiza una playlist homonima en Navidrome (`getScanStatus` + `search3` +
+  `createPlaylist`), emparejando por artista+titulo. Vars: `NAVIDROME_URL`,
+  `NAVIDROME_USER`, `NAVIDROME_PASSWORD`, `NAVIDROME_SCAN_DEBOUNCE_SECONDS`,
+  `NAVIDROME_SCAN_WAIT_SECONDS`.
 
 ---
 
