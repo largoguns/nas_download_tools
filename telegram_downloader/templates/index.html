@@ -213,6 +213,28 @@
       while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
       return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
     };
+
+    // ETA: velocidad suavizada (EWMA) a partir de la variacion entre sondeos.
+    const _eta = new Map();
+    function etaSeconds(id, current, total, status) {
+      if (status !== "DOWNLOADING" || !total || current <= 0 || current >= total) { _eta.delete(id); return null; }
+      const now = Date.now() / 1000;
+      const prev = _eta.get(id);
+      let speed = prev ? prev.speed : 0;
+      if (prev && now > prev.ts && current > prev.value) {
+        const inst = (current - prev.value) / (now - prev.ts);
+        speed = prev.speed ? prev.speed * 0.6 + inst * 0.4 : inst;
+      }
+      _eta.set(id, { value: current, ts: now, speed });
+      return speed > 0 ? (total - current) / speed : null;
+    }
+    function fmtEta(s) {
+      if (s == null || !isFinite(s)) return "";
+      s = Math.round(s);
+      if (s < 60) return `${s}s`;
+      if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+      return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+    }
     const escapeHtml = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
     let bots = [];
@@ -379,7 +401,7 @@
           <div class="queue-main">
             <div>
               <div class="title">${escapeHtml(name)}</div>
-              <div class="meta">${escapeHtml(d.bot_title)} · ${fmtSize(d.bytes_downloaded)} / ${fmtSize(d.total_bytes)}</div>
+              <div class="meta">${escapeHtml(d.bot_title)} · ${fmtSize(d.bytes_downloaded)} / ${fmtSize(d.total_bytes)}${(() => { const e = fmtEta(etaSeconds(d.id, d.bytes_downloaded, d.total_bytes, d.status)); return e ? ` · ETA ${e}` : ""; })()}</div>
               ${d.error ? `<div class="meta" style="color:var(--red)">${escapeHtml(d.error)}</div>` : ""}
             </div>
             <div class="actions"><span class="status ${d.status}">${d.status}</span>${actionButtons(d)}</div>
