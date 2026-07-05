@@ -368,6 +368,8 @@
     .icon-btn.small svg { width: 15px; height: 15px; }
     /* El SVG no captura clics: asi event.target siempre es el boton. */
     button svg { pointer-events: none; }
+    /* Boton de seguir "activo" (ya siguiendo): relleno teal + icono relleno. */
+    .icon-btn.active svg { fill: currentColor; }
 
     /* ---------------- Lightbox (imagen en grande) ---------------- */
     .lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: none; place-items: center; padding: 20px; z-index: 100; cursor: zoom-out; }
@@ -534,6 +536,7 @@
       episodePage: 1,
       episodeHasNext: false,
       expandedJobs: new Set(),
+      tracking: [],
     };
 
     const VIEWS = ["buscar", "seguimiento", "descargas"];
@@ -884,13 +887,34 @@
       }
     }
 
+    function trackingEntryForCurrent() {
+      const anime = state.selectedAnime;
+      const source = currentSource();
+      if (!anime || !source) return null;
+      const url = (anime.url || "").replace(/\/+$/, "");
+      return (state.tracking || []).find(
+        (t) => t.source_id === source.id && (t.anime_url || "").replace(/\/+$/, "") === url,
+      ) || null;
+    }
+
+    function updateFollowButton() {
+      const button = $("followButton");
+      const source = currentSource();
+      const followable = Boolean(state.selectedAnime) && !isDirectSource(source);
+      button.disabled = !followable;
+      const following = followable && Boolean(trackingEntryForCurrent());
+      button.classList.toggle("ghost", !following);   // seguido = relleno; no = contorno
+      button.classList.toggle("active", following);
+      button.title = following ? "Dejar de seguir" : "Seguir";
+    }
+
     function updateEpisodeToolbar(total) {
       const source = currentSource();
       const canDownload = source && source.capabilities && source.capabilities.downloads;
       $("episodeToolbar").hidden = !state.selectedAnime;
       $("downloadAnimeButton").disabled = !canDownload || !state.selectedAnime;
       $("downloadAnimeButton").title = canDownload ? "Descargar anime" : "Solo listado";
-      $("followButton").disabled = !state.selectedAnime || isDirectSource(source);
+      updateFollowButton();
       $("prevEpisodePage").disabled = state.episodePage <= 1;
       $("nextEpisodePage").disabled = !state.episodeHasNext;
       // `total` es el numero de capitulos, no de paginas: se muestra como tal.
@@ -939,17 +963,23 @@
       const source = currentSource();
       const anime = state.selectedAnime;
       if (!source || !anime) return;
+      const entry = trackingEntryForCurrent();
       try {
-        await api("/api/tracking", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_id: source.id,
-            anime_url: anime.url,
-            anime_title: anime.title,
-          }),
-        });
-        setMessage(`Siguiendo "${anime.title}"`);
+        if (entry) {
+          await api(`/api/tracking/${entry.id}`, { method: "DELETE" });
+          setMessage(`Has dejado de seguir "${anime.title}"`);
+        } else {
+          await api("/api/tracking", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_id: source.id,
+              anime_url: anime.url,
+              anime_title: anime.title,
+            }),
+          });
+          setMessage(`Siguiendo "${anime.title}"`);
+        }
         await loadTracking();
       } catch (error) {
         setMessage(error.message, true);
@@ -1224,14 +1254,18 @@
 
     async function loadTracking() {
       const data = await api("/api/tracking");
-      renderTracking(data.tracking || []);
+      state.tracking = data.tracking || [];
+      renderTracking(state.tracking);
+      updateFollowButton();
     }
 
     async function refreshTracking() {
       $("trackingUpdated").textContent = "Comprobando...";
       try {
         const data = await api("/api/tracking/refresh", { method: "POST" });
-        renderTracking(data.tracking || []);
+        state.tracking = data.tracking || [];
+        renderTracking(state.tracking);
+        updateFollowButton();
         $("trackingUpdated").textContent = "Comprobado " + new Date().toLocaleTimeString();
       } catch (error) {
         $("trackingUpdated").textContent = "Error al comprobar";
