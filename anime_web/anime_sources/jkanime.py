@@ -30,7 +30,25 @@ class JkanimeSource(BaseAnimeSource):
     base_url = "https://jkanime.net"
     supports_latest = True
     supports_search = True
+    supports_genres = True
     allow_downloads = True
+    genre_options = (
+        ("accion", "Accion"), ("aventura", "Aventura"), ("autos", "Autos"),
+        ("comedia", "Comedia"), ("dementia", "Dementia"), ("demonios", "Demonios"),
+        ("misterio", "Misterio"), ("drama", "Drama"), ("ecchi", "Ecchi"),
+        ("fantasia", "Fantasia"), ("juegos", "Juegos"), ("hentai", "Hentai"),
+        ("historico", "Historico"), ("terror", "Terror"), ("nios", "Niños"),
+        ("magia", "Magia"), ("artes-marciales", "Artes Marciales"), ("mecha", "Mecha"),
+        ("musica", "Musica"), ("parodia", "Parodia"), ("samurai", "Samurai"),
+        ("romance", "Romance"), ("colegial", "Colegial"), ("sci-fi", "Sci-Fi"),
+        ("shoujo", "Shoujo"), ("shoujo-ai", "Shoujo Ai"), ("shounen", "Shounen"),
+        ("shounen-ai", "Shounen Ai"), ("space", "Space"), ("deportes", "Deportes"),
+        ("super-poderes", "Super Poderes"), ("vampiros", "Vampiros"), ("yaoi", "Yaoi"),
+        ("yuri", "Yuri"), ("harem", "Harem"), ("cosas-de-la-vida", "Cosas de la vida"),
+        ("sobrenatural", "Sobrenatural"), ("militar", "Militar"), ("policial", "Policial"),
+        ("psicologico", "Psicologico"), ("thriller", "Thriller"), ("seinen", "Seinen"),
+        ("josei", "Josei"), ("latino", "Español Latino"), ("isekai", "Isekai"),
+    )
     default_headers = {
         "User-Agent": "anime-downloader/1.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -76,21 +94,30 @@ class JkanimeSource(BaseAnimeSource):
             has_next=False,
         )
 
+    def by_genre(self, genre: str, page: int = 1) -> AnimePage:
+        slug = (genre or "").strip().strip("/")
+        if not slug:
+            return self.popular(page)
+        # El directorio filtra por genero con el mismo JSON `var animes` que
+        # popular/recientes y pagina con &p=N.
+        document = self.html(f"/directorio?genero={quote(slug)}&p={max(1, page)}")
+        return self._parse_directory_page(document, page)
+
     def details(self, anime_url: str) -> AnimeItem:
         document = self.html(anime_url)
-        genres = tuple(
-            link.get_text(strip=True)
-            for link in document.select("li:has(span) a")
-            if link.get_text(strip=True)
-        )
-        genre_line = document.find("span", string=re.compile(r"^\s*Generos:", re.I))
-        if genre_line:
-            parent = genre_line.find_parent("li")
-            genres = tuple(
-                link.get_text(strip=True)
-                for link in parent.select("a")
-                if link.get_text(strip=True)
-            )
+        # Enlaces a /genero/<slug>/: sacamos etiqueta + slug para tags clicables.
+        genre_pairs: list[dict[str, str]] = []
+        seen_slugs: set[str] = set()
+        for link in document.select('a[href*="/genero/"]'):
+            label = link.get_text(strip=True)
+            match = re.search(r"/genero/([^/?#]+)", link.get("href", ""))
+            if not label or not match:
+                continue
+            slug = match.group(1)
+            if slug in seen_slugs:
+                continue
+            seen_slugs.add(slug)
+            genre_pairs.append({"label": label, "value": slug})
 
         status = "Finalizado" if document.select(".finished") else "En emision"
         return self.normalize_anime(
@@ -99,8 +126,9 @@ class JkanimeSource(BaseAnimeSource):
                 url=anime_url,
                 thumbnail_url=image_url(document.select_one(".anime_info img")),
                 description=text_or_empty(document.select_one(".scroll")),
-                genres=genres,
+                genres=tuple(pair["label"] for pair in genre_pairs),
                 status=status,
+                extra={"genres": genre_pairs},
             ),
         )
 

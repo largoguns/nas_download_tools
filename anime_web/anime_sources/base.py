@@ -128,7 +128,10 @@ class BaseAnimeSource(ABC):
     base_url: str = ""
     supports_latest: bool = False
     supports_search: bool = True
+    supports_genres: bool = False
     allow_downloads: bool = False
+    # Lista de generos disponibles como pares (valor, etiqueta) para la UI.
+    genre_options: tuple[tuple[str, str], ...] = ()
     default_headers: dict[str, str] = {
         "User-Agent": "anime-edu-lab/1.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -150,6 +153,7 @@ class BaseAnimeSource(ABC):
         return {
             "latest": self.supports_latest,
             "search": self.supports_search,
+            "genres": self.supports_genres,
             "downloads": self.allow_downloads,
         }
 
@@ -160,6 +164,7 @@ class BaseAnimeSource(ABC):
             "lang": self.lang,
             "base_url": self.base_url,
             "capabilities": self.capabilities,
+            "genres": [{"value": value, "label": label} for value, label in self.genre_options],
         }
 
     def absolute_url(self, url: str) -> str:
@@ -229,6 +234,9 @@ class BaseAnimeSource(ABC):
 
     def search(self, query: str, page: int = 1) -> AnimePage:
         raise SourceError(f"{self.name} does not implement search")
+
+    def by_genre(self, genre: str, page: int = 1) -> AnimePage:
+        raise SourceError(f"{self.name} does not implement genre listings")
 
     @abstractmethod
     def details(self, anime_url: str) -> AnimeItem:

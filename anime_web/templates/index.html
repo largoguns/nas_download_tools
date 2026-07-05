@@ -224,7 +224,10 @@
     .meta { margin-top: 3px; color: var(--muted); font-size: 0.88rem; overflow-wrap: anywhere; }
 
     .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; color: var(--muted); font-size: 0.76rem; font-weight: 700; }
+    .chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; color: var(--muted); font-size: 0.76rem; font-weight: 700; background: #fff; min-height: 0; cursor: default; }
+    button.chip { cursor: pointer; }
+    button.chip:hover { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+    .genre-row { margin-top: 10px; }
 
     .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
     .actions button { min-height: 36px; padding: 0 12px; font-size: 0.82rem; }
@@ -418,6 +421,10 @@
             </div>
             <button id="searchButton" class="icon-btn" type="button" title="Buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
             <button id="popularButton" class="icon-btn ghost" type="button" title="Popular"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M21 7v6h-6"/></svg></button>
+          </div>
+          <div id="genrePanel" class="genre-row" hidden>
+            <label for="genreSelect">Buscar por genero</label>
+            <select id="genreSelect"></select>
           </div>
           <div id="sourceMode" class="source-mode"></div>
           <div id="directPanel">
@@ -627,6 +634,7 @@
       $("popularButton").disabled = direct;
       $("latestButton").disabled = !source || !source.capabilities || !source.capabilities.latest;
       $("searchInput").placeholder = direct ? "No aplica a URL directa" : "Titulo";
+      populateGenres(source, direct);
 
       if (!source) {
         $("sourceMode").textContent = "Selecciona una fuente para cargar el catalogo o preparar una descarga directa.";
@@ -637,6 +645,38 @@
         return;
       }
       $("sourceMode").textContent = `${source.name}: catalogo, busqueda y listado de episodios desde la interfaz.`;
+    }
+
+    function populateGenres(source, direct) {
+      const panel = $("genrePanel");
+      const select = $("genreSelect");
+      const genres = (source && source.capabilities && source.capabilities.genres && !direct)
+        ? (source.genres || [])
+        : [];
+      if (!genres.length) {
+        panel.hidden = true;
+        select.innerHTML = "";
+        return;
+      }
+      panel.hidden = false;
+      select.innerHTML = '<option value="">Sin genero</option>'
+        + genres.map((g) => `<option value="${escapeAttr(g.value)}">${escapeHtml(g.label)}</option>`).join("");
+    }
+
+    async function loadGenre(genre) {
+      const source = currentSource();
+      if (!source || !genre) return;
+      setMessage("Cargando genero...");
+      const data = await api(`/api/genre?source=${encodeURIComponent(source.id)}&genre=${encodeURIComponent(genre)}`);
+      renderResults(data.items || []);
+      setMessage("");
+    }
+
+    function openGenre(value) {
+      $("view-buscar").classList.remove("detail-open");  // volver a la lista (movil)
+      const select = $("genreSelect");
+      if (select) select.value = value;
+      loadGenre(value).catch((error) => setMessage(error.message, true));
     }
 
     function coverNode(item) {
@@ -679,12 +719,17 @@
         target.innerHTML = `<div class="empty">Selecciona una serie</div>`;
         return;
       }
+      const genres = (item.extra && item.extra.genres) || [];
+      const chips = genres.length
+        ? `<div class="chips">${genres.map((g) => `<button class="chip" type="button" data-genre="${escapeAttr(g.value)}">${escapeHtml(g.label)}</button>`).join("")}</div>`
+        : "";
       target.innerHTML = `
         <article class="row">
           ${coverNode(item)}
           <div>
             <div class="title">${escapeHtml(item.title)}</div>
             <div class="meta">${escapeHtml(item.description || item.url)}</div>
+            ${chips}
           </div>
         </article>
       `;
@@ -695,6 +740,10 @@
           img.addEventListener("click", () => openLightbox(item.thumbnail_url));
         }
       }
+      // Tags de genero clicables: llevan a la busqueda por ese genero.
+      target.querySelectorAll("[data-genre]").forEach((button) => {
+        button.addEventListener("click", () => openGenre(button.dataset.genre));
+      });
     }
 
     function openLightbox(src) {
@@ -805,7 +854,19 @@
       renderDetails(item);
       updateEpisodeToolbar();
       $("episodes").innerHTML = `<div class="empty">Cargando episodios</div>`;
+      loadAnimeDetails(item).catch(() => {});  // enriquece con generos/descripcion
       await loadEpisodePage(1);
+    }
+
+    async function loadAnimeDetails(item) {
+      const source = currentSource();
+      if (!source) return;
+      const data = await api(`/api/details?source=${encodeURIComponent(source.id)}&url=${encodeURIComponent(item.url)}`);
+      // Solo re-renderiza si seguimos en el mismo anime (evita pisar otra seleccion).
+      if (state.selectedAnime && state.selectedAnime.url === item.url) {
+        state.selectedAnime = data;
+        renderDetails(data);
+      }
     }
 
     async function loadEpisodePage(page) {
@@ -1231,6 +1292,9 @@
       } else {
         loadPopular().catch((error) => setMessage(error.message, true));
       }
+    });
+    $("genreSelect").addEventListener("change", (event) => {
+      if (event.target.value) loadGenre(event.target.value).catch((error) => setMessage(error.message, true));
     });
     $("searchButton").addEventListener("click", () => search().catch((error) => setMessage(error.message, true)));
     $("popularButton").addEventListener("click", () => loadPopular().catch((error) => setMessage(error.message, true)));
