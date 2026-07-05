@@ -95,6 +95,8 @@
     .action-button { min-height: 34px; width: 34px; padding: 0; display: inline-grid; place-items: center; background: var(--accent); border: 1px solid var(--accent); border-radius: 6px; color: #fff; cursor: pointer; }
     .action-button:hover { background: var(--accent-strong); }
     .action-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    /* El SVG no captura clics: asi event.target siempre es el boton. */
+    button svg { pointer-events: none; }
     .action-button.secondary { background: #fff; color: var(--text); border-color: var(--line); }
     .action-button.secondary:hover { background: #eef2f6; }
     .action-button.danger { background: var(--red); border-color: var(--red); color: #fff; }
@@ -167,6 +169,8 @@
     .card-title { font-weight: 800; font-size: 0.9rem; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .card-artist { color: var(--muted); font-size: 0.8rem; margin-top: 2px; overflow-wrap: anywhere; }
     .card-add { width: calc(100% - 20px); margin: 0 10px 10px; }
+    .card-add svg, #search-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+    #search-button { width: 46px; padding: 0; display: grid; place-items: center; }
 
     /* ---- Grupo de album en la cola ---- */
     .group-row { background: #eef4f3; }
@@ -193,7 +197,7 @@
     .qcard-bar { height: 4px; background: #e6ebf2; }
     .qcard-bar > span { display: block; height: 100%; width: 0%; }
     .qcard-actions { display: flex; gap: 6px; padding: 8px 10px 10px; }
-    .qcard-actions button { flex: 1 1 auto; }
+    .qcard-actions .action-button { flex: 0 0 auto; }
 
     @media (max-width: 720px) {
       .table-wrap { display: none; }
@@ -232,7 +236,7 @@
               <label for="search-input">Título, álbum, artista o enlace de Spotify</label>
               <input id="search-input" type="text" placeholder="p. ej. Daft Punk Discovery — o pega un enlace de Spotify">
             </div>
-            <button id="search-button" type="submit">Buscar</button>
+            <button id="search-button" type="submit" title="Buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
           </form>
           <div id="search-message" class="message" role="status" aria-live="polite"></div>
         </section>
@@ -292,6 +296,8 @@
   <script>
     // Prefijo publico bajo el proxy (p. ej. "/spotube"); vacio en acceso directo.
     const API_BASE = "{{ base_path }}";
+    const DOWNLOAD_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+    const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
     const message = document.querySelector("#message");
     const queueBody = document.querySelector("#queue-body");
     const emptyState = document.querySelector("#empty-state");
@@ -879,10 +885,10 @@
 
     function queueCardActions(item) {
       const s = item.status;
-      if (s === "PENDING" || s === "DOWNLOADING") return [["cancel", "Cancelar", "ghost"]];
-      if (s === "PAUSED") return [["resume", "Reanudar", ""], ["cancel", "Cancelar", "ghost"]];
+      if (s === "PENDING" || s === "DOWNLOADING") return [["pause", "Pausar", "secondary"], ["cancel", "Cancelar", "danger"]];
+      if (s === "PAUSED") return [["resume", "Reanudar", ""], ["cancel", "Cancelar", "danger"], ["delete", "Eliminar", "secondary"]];
       if (s === "FAILED") return [["retry", "Reintentar", ""], ["delete", "Eliminar", "danger"]];
-      return [["delete", "Eliminar", "danger"]]; // COMPLETED / CANCELED
+      return [["retry", "Reprocesar", ""], ["delete", "Eliminar", "danger"]]; // COMPLETED / CANCELED
     }
 
     function buildQueueCard(item) {
@@ -912,12 +918,8 @@
       card.querySelector(".qcard-artist").textContent = item.metadata_artist || "";
       const actions = card.querySelector(".qcard-actions");
       for (const [action, label, variant] of queueCardActions(item)) {
-        const btn = document.createElement("button");
-        btn.className = `small ${variant}`.trim();
-        btn.type = "button";
-        btn.dataset.action = action;
-        btn.dataset.downloadId = item.id;
-        btn.textContent = label;
+        // Mismo boton-icono que la tabla de escritorio (createActionButton).
+        const btn = createActionButton(item, action, label, variant);
         btn.addEventListener("click", () => performQueueAction(btn));
         actions.appendChild(btn);
       }
@@ -944,10 +946,11 @@
           </div>
         </div>
         <div class="qcard-bar"><span style="width:${pct}%; background:${getProgressColor({ status: st })}"></span></div>
-        <div class="qcard-actions"><button class="small danger" type="button">Eliminar álbum</button></div>`;
+        <div class="qcard-actions"><button class="action-button danger" type="button" title="Eliminar álbum"></button></div>`;
       card.querySelector(".qcard-title").textContent = group.title;
       card.querySelector(".qcard-artist").textContent = `Álbum · ${total} canciones`;
       const btn = card.querySelector(".qcard-actions button");
+      btn.appendChild(createIcon("delete"));
       btn.addEventListener("click", async () => {
         const ids = group.items.map((i) => i.id);
         if (!window.confirm(`Eliminar el álbum (${ids.length} canciones) de la cola? No se borran archivos.`)) return;
@@ -1114,25 +1117,26 @@
           <div class="card-title"></div>
           <div class="card-artist"></div>
         </div>
-        <button class="small card-add" type="button">Descargar</button>`;
+        <button class="small card-add" type="button" title="Descargar">${DOWNLOAD_SVG}</button>`;
       card.querySelector(".card-title").textContent = r.title || "(sin título)";
       card.querySelector(".card-artist").textContent =
         [r.artist, isAlbum && r.tracks ? `${r.tracks} pistas` : ""].filter(Boolean).join(" · ");
       const btn = card.querySelector(".card-add");
       btn.addEventListener("click", async () => {
         btn.disabled = true;
-        btn.textContent = "Añadiendo...";
+        btn.title = "Añadiendo...";
         try {
           const data = await catalogAdd(r);
           setSearchMessage(
             isAlbum ? `Encoladas ${data.queued} canciones del álbum.` : `Añadido como descarga #${data.id}.`,
           );
-          btn.textContent = "Añadido ✓";
+          btn.title = "Añadido";
+          btn.innerHTML = CHECK_SVG;
           loadStatus().catch(() => {});
         } catch (e) {
           setSearchMessage(e.message, true);
           btn.disabled = false;
-          btn.textContent = "Descargar";
+          btn.title = "Descargar";
         }
       });
       return card;

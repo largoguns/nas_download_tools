@@ -285,7 +285,7 @@
     /* Boton volver solo en pantallas estrechas (las dos columnas ya no caben) */
     .back-btn { display: none; }
     /* Que "Volver" no se estire a todo el ancho como las acciones de tarjeta. */
-    .actions .back-btn { flex: 0 0 auto; min-height: 34px; padding: 0 14px; }
+    .actions .back-btn { flex: 0 0 auto; }
 
     @media (max-width: 999px) {
       /* Pseudo-navegacion: lista <-> detalle, sin recargar la lista */
@@ -351,7 +351,20 @@
     .dcard-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
     .dcard-count { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
     .dcard-actions { display: flex; gap: 6px; padding: 8px 12px 12px; flex-wrap: wrap; }
-    .dcard-actions button { flex: 1 1 auto; }
+
+    /* ---------------- Botones de accion con icono (comun a la familia) ---------------- */
+    button.icon-btn { min-height: 36px; width: 36px; padding: 0; display: inline-grid; place-items: center; background: var(--accent); border: 1px solid var(--accent); border-radius: 6px; color: #fff; cursor: pointer; flex: none; }
+    .icon-btn:hover { background: var(--accent-strong); }
+    .icon-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+    .icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-btn.ghost { background: #fff; color: var(--text); border-color: var(--line); }
+    .icon-btn.ghost:hover { background: #eef2f6; }
+    .icon-btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+    .icon-btn.danger:hover { background: #912018; }
+    .icon-btn.small { min-height: 30px; width: 30px; }
+    .icon-btn.small svg { width: 15px; height: 15px; }
+    /* El SVG no captura clics: asi event.target siempre es el boton. */
+    button svg { pointer-events: none; }
 
     /* ---------------- Lightbox (imagen en grande) ---------------- */
     .lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: none; place-items: center; padding: 20px; z-index: 100; cursor: zoom-out; }
@@ -403,8 +416,8 @@
               <label for="searchInput">Busqueda</label>
               <input id="searchInput" type="search" placeholder="Titulo">
             </div>
-            <button id="searchButton" type="button">Buscar</button>
-            <button id="popularButton" class="ghost" type="button">Popular</button>
+            <button id="searchButton" class="icon-btn" type="button" title="Buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
+            <button id="popularButton" class="icon-btn ghost" type="button" title="Popular"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M21 7v6h-6"/></svg></button>
           </div>
           <div id="sourceMode" class="source-mode"></div>
           <div id="directPanel">
@@ -425,14 +438,14 @@
                 <label for="directVideoUrl">URL directa</label>
                 <input id="directVideoUrl" type="url" placeholder="https://...">
               </div>
-              <button id="directEpisodeButton" type="button">Encolar</button>
+              <button id="directEpisodeButton" class="icon-btn" type="button" title="Encolar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
             </div>
             <div class="direct-batch">
               <div>
                 <label for="directBatch">Lote</label>
                 <textarea id="directBatch" placeholder="1 | Episodio 1 | https://..."></textarea>
               </div>
-              <button id="directBatchButton" type="button">Encolar lote</button>
+              <button id="directBatchButton" class="icon-btn" type="button" title="Encolar lote"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
             </div>
           </div>
           <div id="message" class="message"></div>
@@ -442,7 +455,7 @@
           <div class="panel catalog-pane">
             <div class="panel-head">
               <h2>Catalogo</h2>
-              <button id="latestButton" class="ghost" type="button">Recientes</button>
+              <button id="latestButton" class="icon-btn ghost" type="button" title="Recientes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>
             </div>
             <div id="results" class="result-grid"></div>
           </div>
@@ -452,19 +465,19 @@
               <h2>Episodios</h2>
               <div class="actions">
                 <span id="selectedSource" class="muted small"></span>
-                <button id="backButton" class="ghost back-btn" type="button">&#8592; Volver</button>
+                <button id="backButton" class="icon-btn ghost back-btn" type="button" title="Volver"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></button>
               </div>
             </div>
             <div id="animeDetails"></div>
             <div id="episodeToolbar" class="episode-toolbar" hidden>
               <div class="actions">
-                <button id="downloadAnimeButton" type="button">Descargar anime</button>
-                <button id="followButton" class="ghost" type="button">Seguir</button>
+                <button id="downloadAnimeButton" class="icon-btn" type="button" title="Descargar anime"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></button>
+                <button id="followButton" class="icon-btn ghost" type="button" title="Seguir"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></button>
               </div>
               <div class="pager">
-                <button id="prevEpisodePage" class="ghost" type="button">Anterior</button>
+                <button id="prevEpisodePage" class="icon-btn ghost" type="button" title="Anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
                 <span id="episodePageLabel">Pagina 1</span>
-                <button id="nextEpisodePage" class="ghost" type="button">Siguiente</button>
+                <button id="nextEpisodePage" class="icon-btn ghost" type="button" title="Siguiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
               </div>
             </div>
             <div id="episodes" class="episode-list" style="margin-top: 12px;"></div>
@@ -479,7 +492,7 @@
             <h2>Animes en seguimiento</h2>
             <div class="actions">
               <span id="trackingUpdated" class="muted small"></span>
-              <button id="trackRefreshButton" class="ghost" type="button">Comprobar</button>
+              <button id="trackRefreshButton" class="icon-btn ghost" type="button" title="Comprobar novedades"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.4L3 16"/><path d="M3 21v-5h5"/></svg></button>
             </div>
           </div>
           <div id="trackMessage" class="message"></div>
@@ -520,6 +533,29 @@
     const VIEW_TITLES = { buscar: "Buscar", seguimiento: "Seguimiento", descargas: "Descargas" };
 
     const $ = (id) => document.getElementById(id);
+
+    // Iconos SVG comunes (mismo lenguaje visual que las otras apps).
+    const _svg = (paths) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
+    const ICONS = {
+      pause: _svg('<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'),
+      resume: _svg('<path d="M7 4v16l13-8z"/>'),
+      cancel: _svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+      retry: _svg('<path d="M3 12a9 9 0 0 1 15.5-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.4L3 16"/><path d="M3 21v-5h5"/>'),
+      delete: _svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'),
+      download: _svg('<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>'),
+      chevronDown: _svg('<path d="m6 9 6 6 6-6"/>'),
+      chevronRight: _svg('<path d="m9 6 6 6-6 6"/>'),
+      chevronLeft: _svg('<path d="m15 6-6 6 6 6"/>'),
+      back: _svg('<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>'),
+      search: _svg('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'),
+      follow: _svg('<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/>'),
+      plus: _svg('<path d="M12 5v14"/><path d="M5 12h14"/>'),
+      trending: _svg('<path d="m3 17 6-6 4 4 8-8"/><path d="M21 7v6h-6"/>'),
+      clock: _svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'),
+      eye: _svg('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+      check: _svg('<path d="M20 6 9 17l-5-5"/>'),
+    };
+    const ACTION_ICON = { pause: ICONS.pause, resume: ICONS.resume, cancel: ICONS.cancel, retry: ICONS.retry, delete: ICONS.delete };
 
     function setMessage(text, isError = false) {
       $("message").textContent = text || "";
@@ -687,7 +723,7 @@
             <div class="meta">${escapeHtml(episode.uploaded_at || episode.url)}</div>
           </div>
           <div class="actions">
-            <button type="button" data-download="${index}" ${canDownload ? "" : "disabled"}>${canDownload ? "Descargar" : "Solo listado"}</button>
+            <button class="icon-btn" type="button" data-download="${index}" ${canDownload ? "" : "disabled"} title="${canDownload ? "Descargar" : "Solo listado"}">${ICONS.download}</button>
           </div>
         </article>
       `).join("");
@@ -792,11 +828,12 @@
       const canDownload = source && source.capabilities && source.capabilities.downloads;
       $("episodeToolbar").hidden = !state.selectedAnime;
       $("downloadAnimeButton").disabled = !canDownload || !state.selectedAnime;
-      $("downloadAnimeButton").textContent = canDownload ? "Descargar anime" : "Solo listado";
+      $("downloadAnimeButton").title = canDownload ? "Descargar anime" : "Solo listado";
       $("followButton").disabled = !state.selectedAnime || isDirectSource(source);
       $("prevEpisodePage").disabled = state.episodePage <= 1;
       $("nextEpisodePage").disabled = !state.episodeHasNext;
-      const totalText = total ? ` de ${total}` : "";
+      // `total` es el numero de capitulos, no de paginas: se muestra como tal.
+      const totalText = total ? ` · ${total} capitulos` : "";
       $("episodePageLabel").textContent = `Pagina ${state.episodePage}${totalText}`;
     }
 
@@ -938,7 +975,7 @@
         const completed = item.progress_current || 0;
         const total = item.progress_total || (item.items ? item.items.length : 0);
         const actions = jobCardActions(item).map(([action, label, variant]) =>
-          `<button class="small ${variant}" type="button" data-jobcard="${action}" data-id="${item.id}">${label}</button>`).join("");
+          `<button class="icon-btn ${variant}" type="button" data-jobcard="${action}" data-id="${item.id}" title="${label}">${ACTION_ICON[action === "__delete" ? "delete" : action]}</button>`).join("");
         return `
           <article class="dcard">
             <div class="dcard-body">
@@ -990,10 +1027,10 @@
                 <div class="subitem-actions">
                   <span class="status ${escapeAttr(child.status)}">${escapeHtml(child.status)}</span>
                   ${["FAILED", "CANCELED", "PAUSED"].includes(child.status)
-                    ? `<button class="ghost small" type="button" data-item-retry="${child.id}">Reintentar</button>`
+                    ? `<button class="icon-btn ghost small" type="button" data-item-retry="${child.id}" title="Reintentar">${ICONS.retry}</button>`
                     : ""}
                   ${child.status === "COMPLETED"
-                    ? `<button class="ghost small" type="button" data-item-force="${child.id}">Volver a descargar</button>`
+                    ? `<button class="icon-btn ghost small" type="button" data-item-force="${child.id}" title="Volver a descargar">${ICONS.download}</button>`
                     : ""}
                 </div>
               </div>
@@ -1009,13 +1046,13 @@
                 ${item.error ? `<div class="meta">${escapeHtml(item.error)}</div>` : ""}
               </div>
               <div class="actions">
-                <button class="ghost" type="button" data-toggle="${item.id}">${expanded ? "Ocultar" : "Ver"}</button>
+                <button class="icon-btn ghost" type="button" data-toggle="${item.id}" title="${expanded ? "Ocultar" : "Ver"} capitulos">${expanded ? ICONS.chevronDown : ICONS.chevronRight}</button>
                 <span class="status ${escapeAttr(item.status)}">${escapeHtml(item.status)}</span>
-                <button class="ghost" type="button" data-action="pause" data-id="${item.id}">Pausar</button>
-                <button class="ghost" type="button" data-action="resume" data-id="${item.id}">Reanudar</button>
-                <button class="ghost" type="button" data-action="retry" data-id="${item.id}">Reintentar</button>
-                <button class="danger" type="button" data-action="cancel" data-id="${item.id}">Cancelar</button>
-                <button class="ghost" type="button" data-delete="${item.id}">Eliminar</button>
+                <button class="icon-btn ghost" type="button" data-action="pause" data-id="${item.id}" title="Pausar">${ICONS.pause}</button>
+                <button class="icon-btn ghost" type="button" data-action="resume" data-id="${item.id}" title="Reanudar">${ICONS.resume}</button>
+                <button class="icon-btn ghost" type="button" data-action="retry" data-id="${item.id}" title="Reintentar">${ICONS.retry}</button>
+                <button class="icon-btn danger" type="button" data-action="cancel" data-id="${item.id}" title="Cancelar">${ICONS.cancel}</button>
+                <button class="icon-btn ghost" type="button" data-delete="${item.id}" title="Eliminar">${ICONS.delete}</button>
               </div>
             </div>
             <div class="bar"><span style="width: ${progress}%"></span></div>
@@ -1096,10 +1133,10 @@
               ${item.error ? `<div class="meta">${escapeHtml(item.error)}</div>` : ""}
             </div>
             <div class="actions">
-              <button class="ghost" type="button" data-track-open="${item.id}">Ver</button>
-              ${item.new_count > 0 ? `<button type="button" data-track-download="${item.id}">Descargar nuevos</button>` : ""}
-              ${item.new_count > 0 ? `<button class="ghost" type="button" data-track-seen="${item.id}">Marcar visto</button>` : ""}
-              <button class="ghost" type="button" data-track-del="${item.id}">Dejar de seguir</button>
+              <button class="icon-btn ghost" type="button" data-track-open="${item.id}" title="Ver">${ICONS.eye}</button>
+              ${item.new_count > 0 ? `<button class="icon-btn" type="button" data-track-download="${item.id}" title="Descargar nuevos">${ICONS.download}</button>` : ""}
+              ${item.new_count > 0 ? `<button class="icon-btn ghost" type="button" data-track-seen="${item.id}" title="Marcar visto">${ICONS.check}</button>` : ""}
+              <button class="icon-btn ghost danger" type="button" data-track-del="${item.id}" title="Dejar de seguir">${ICONS.delete}</button>
             </div>
           </article>
         `;

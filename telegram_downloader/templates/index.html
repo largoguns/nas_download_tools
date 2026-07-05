@@ -52,6 +52,20 @@
     .danger { background: var(--red); } .danger:hover { background: #912018; }
     button.small { min-height: 32px; padding: 2px 12px; font-size: 0.78rem; }
 
+    /* ---- Botones de accion con icono (comun a la familia) ---- */
+    button.icon-btn { min-height: 36px; width: 36px; padding: 0; display: inline-grid; place-items: center; background: var(--accent); border: 1px solid var(--accent); border-radius: 6px; color: #fff; cursor: pointer; flex: none; }
+    .icon-btn:hover { background: var(--accent-strong); }
+    .icon-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+    .icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-btn.ghost { background: #fff; color: var(--text); border-color: var(--line); }
+    .icon-btn.ghost:hover { background: #eef2f6; }
+    .icon-btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+    .icon-btn.danger:hover { background: #912018; }
+    .icon-btn.small { min-height: 32px; width: 32px; }
+    .icon-btn.small svg { width: 15px; height: 15px; }
+    /* El SVG no captura clics: asi event.target/currentTarget es el boton. */
+    button svg { pointer-events: none; }
+
     .toolbar { display: grid; gap: 10px; grid-template-columns: 1fr; align-items: end; }
     .list { display: grid; gap: 10px; }
     .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: #fff; }
@@ -128,7 +142,7 @@
               <label for="botInput">Anadir bot (@usuario o enlace t.me)</label>
               <input id="botInput" placeholder="@videoclubpacobot" autocomplete="off">
             </div>
-            <button id="addBotBtn" type="button">Anadir</button>
+            <button id="addBotBtn" type="button" class="icon-btn" title="Anadir bot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
           </div>
           <div id="botMsg" class="message"></div>
         </div>
@@ -144,13 +158,13 @@
             <h2 id="consoleTitle">Consola</h2>
             <div class="actions">
               <button id="helpBtn" type="button" class="ghost small">/start</button>
-              <button id="refreshMsgsBtn" type="button" class="ghost small">Actualizar</button>
-              <button id="closeConsoleBtn" type="button" class="ghost small">Cerrar</button>
+              <button id="refreshMsgsBtn" type="button" class="icon-btn ghost small" title="Actualizar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.4L3 16"/><path d="M3 21v-5h5"/></svg></button>
+              <button id="closeConsoleBtn" type="button" class="icon-btn ghost small" title="Cerrar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
             </div>
           </div>
           <div class="send-bar">
             <input id="sendInput" placeholder="Escribe un titulo o comando y pulsa Enviar" autocomplete="off">
-            <button id="sendBtn" type="button">Enviar</button>
+            <button id="sendBtn" type="button" class="icon-btn" title="Enviar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button>
           </div>
           <div id="convoMsg" class="message"></div>
           <div id="convo" class="convo"></div>
@@ -162,7 +176,7 @@
         <div class="panel">
           <div class="panel-head">
             <h2>Cola de descargas</h2>
-            <button id="refreshQueueBtn" type="button" class="ghost small">Refrescar</button>
+            <button id="refreshQueueBtn" type="button" class="icon-btn ghost small" title="Refrescar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.4L3 16"/><path d="M3 21v-5h5"/></svg></button>
           </div>
           <div id="queueList" class="list"></div>
         </div>
@@ -181,6 +195,18 @@
       return data;
     };
     const jpost = (url, body) => api(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+    // Iconos SVG comunes (mismo lenguaje visual que las otras apps).
+    const _svg = (paths) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
+    const ICONS = {
+      pause: _svg('<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'),
+      resume: _svg('<path d="M7 4v16l13-8z"/>'),
+      cancel: _svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+      retry: _svg('<path d="M3 12a9 9 0 0 1 15.5-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.4L3 16"/><path d="M3 21v-5h5"/>'),
+      delete: _svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'),
+      download: _svg('<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>'),
+      eye: _svg('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+    };
     const fmtSize = (bytes) => {
       if (!bytes) return "-";
       const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, n = bytes;
@@ -223,15 +249,15 @@
             ${b.error ? `<div class="meta" style="color:var(--red)">${escapeHtml(b.error)}</div>` : ""}
           </div>
           <div class="actions">
-            <button class="small" data-act="open" data-id="${b.id}">Abrir</button>
-            <button class="danger small" data-act="del" data-id="${b.id}">Eliminar</button>
+            <button class="icon-btn small" data-act="open" data-id="${b.id}" title="Abrir">${ICONS.eye}</button>
+            <button class="icon-btn danger small" data-act="del" data-id="${b.id}" title="Eliminar">${ICONS.delete}</button>
           </div>`;
         list.appendChild(row);
       });
       list.querySelectorAll("button").forEach((b) => b.addEventListener("click", onBotAction));
     }
     async function onBotAction(ev) {
-      const id = Number(ev.target.dataset.id), act = ev.target.dataset.act;
+      const id = Number(ev.currentTarget.dataset.id), act = ev.currentTarget.dataset.act;
       if (act === "open") { openConsole(bots.find((b) => b.id === id)); }
       else if (act === "del") {
         if (!confirm("Eliminar el bot? (no borra descargas)")) return;
@@ -314,7 +340,7 @@
           const titleAttr = escapeHtml((m.text || "").replace(/\s+/g, " ").trim());
           html += `<div class="file-line">&#128206; <span class="title">${escapeHtml(m.file_name || m.media_type || "fichero")}</span>`
             + `<span class="muted small">${fmtSize(m.file_size)}</span>`
-            + `<button class="small" data-dl="${m.id}" data-name="${escapeHtml(m.file_name || "")}" data-title="${titleAttr}">Descargar</button></div>`;
+            + `<button class="icon-btn small" data-dl="${m.id}" data-name="${escapeHtml(m.file_name || "")}" data-title="${titleAttr}" title="Descargar">${ICONS.download}</button></div>`;
         }
         if (m.buttons && m.buttons.length) {
           html += `<div class="kbd">` + m.buttons.map((b) =>
@@ -365,15 +391,15 @@
     }
     function actionButtons(d) {
       const btns = [];
-      if (["PENDING", "DOWNLOADING"].includes(d.status)) btns.push(`<button class="ghost small" data-act="pause" data-id="${d.id}">Pausar</button>`);
-      if (d.status === "PAUSED") btns.push(`<button class="small" data-act="resume" data-id="${d.id}">Reanudar</button>`);
-      if (["FAILED", "CANCELED"].includes(d.status)) btns.push(`<button class="small" data-act="retry" data-id="${d.id}">Reintentar</button>`);
-      if (["PENDING", "DOWNLOADING", "PAUSED"].includes(d.status)) btns.push(`<button class="ghost small" data-act="cancel" data-id="${d.id}">Cancelar</button>`);
-      if (d.status !== "DOWNLOADING") btns.push(`<button class="danger small" data-act="delete" data-id="${d.id}">Eliminar</button>`);
+      if (["PENDING", "DOWNLOADING"].includes(d.status)) btns.push(`<button class="icon-btn ghost small" data-act="pause" data-id="${d.id}" title="Pausar">${ICONS.pause}</button>`);
+      if (d.status === "PAUSED") btns.push(`<button class="icon-btn small" data-act="resume" data-id="${d.id}" title="Reanudar">${ICONS.resume}</button>`);
+      if (["FAILED", "CANCELED"].includes(d.status)) btns.push(`<button class="icon-btn small" data-act="retry" data-id="${d.id}" title="Reintentar">${ICONS.retry}</button>`);
+      if (["PENDING", "DOWNLOADING", "PAUSED"].includes(d.status)) btns.push(`<button class="icon-btn ghost small" data-act="cancel" data-id="${d.id}" title="Cancelar">${ICONS.cancel}</button>`);
+      if (d.status !== "DOWNLOADING") btns.push(`<button class="icon-btn danger small" data-act="delete" data-id="${d.id}" title="Eliminar">${ICONS.delete}</button>`);
       return btns.join("");
     }
     async function onQueueAction(ev) {
-      const id = ev.target.dataset.id, act = ev.target.dataset.act;
+      const id = ev.currentTarget.dataset.id, act = ev.currentTarget.dataset.act;
       try {
         if (act === "delete") await api(`/api/downloads/${id}`, { method: "DELETE" });
         else await jpost(`/api/downloads/${id}/${act}`);
