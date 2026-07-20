@@ -542,7 +542,12 @@ def enqueue_query(
         return cursor.lastrowid
 
 
-def list_downloads(limit):
+def count_downloads():
+    with get_connection() as connection:
+        return connection.execute("SELECT COUNT(*) AS c FROM downloads").fetchone()["c"]
+
+
+def list_downloads(limit, offset=0):
     with get_connection() as connection:
         rows = connection.execute(
             """
@@ -570,9 +575,9 @@ def list_downloads(limit):
                     WHEN COALESCE(control_status, status) IN ('DOWNLOADING', 'PENDING') THEN id
                     ELSE -id
                 END
-             LIMIT ?
+             LIMIT ? OFFSET ?
             """,
-            (limit,),
+            (limit, offset),
         ).fetchall()
 
         items = [dict(row) for row in rows]
@@ -684,13 +689,18 @@ def finish_job(job_id, status, return_code=None, error=None):
             (status, now, now, return_code, clean_error, status, status, job_id),
         )
 
-    if status == "COMPLETED":
-        on_job_completed(job_id)
+    if status in ("COMPLETED", "FAILED"):
+        on_job_finished(job_id, status)
 
 
-def on_job_completed(job_id):
-    """Al completar: si es una playlist, crea/actualiza la playlist en Navidrome
-    (en segundo plano, esperando al escaneo); si no, solo dispara el escaneo."""
+def on_job_finished(job_id, status):
+    """Al terminar un trabajo (completado o fallido):
+
+    - Si es una **playlist**, crea/actualiza la playlist en Navidrome con las
+      canciones que SI se hayan descargado (aunque alguna fallara). Se hace tanto
+      en COMPLETED como en FAILED, para no perder la playlist por un fallo parcial.
+    - Si no es playlist, solo dispara un escaneo de Navidrome cuando fue exito.
+    """
     with get_connection() as connection:
         row = connection.execute(
             "SELECT metadata_type, metadata_title FROM downloads WHERE id = ?",
@@ -703,7 +713,7 @@ def on_job_completed(job_id):
             args=(job_id, row["metadata_title"]),
             daemon=True,
         ).start()
-    else:
+    elif status == "COMPLETED":
         navidrome.notify()  # nueva musica: escanea Navidrome (con debounce)
 
 
@@ -1919,14 +1929,27 @@ def catalog_add():
 @app.get("/status")
 def status():
     try:
-        limit = int(request.args.get("limit", "100"))
+        per_page = int(request.args.get("per_page", "25"))
     except ValueError:
-        limit = 100
+        per_page = 25
+    per_page = min(max(per_page, 1), 200)
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page = 1
 
-    limit = min(max(limit, 1), 200)
+    total = count_downloads()
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
+
     return jsonify(
         {
-            "items": list_downloads(limit),
+            "items": list_downloads(per_page, offset),
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
             "config": {
                 "spotdl_audio_providers": SPOTDL_AUDIO_PROVIDERS,
                 "spotdl_reprocess_missing_only": SPOTDL_REPROCESS_MISSING_ONLY,
