@@ -181,8 +181,11 @@
     .group-cell { padding: 10px; }
     .group-main { display: flex; align-items: center; gap: 12px; }
     .group-main .cover { width: 44px; height: 44px; }
+    .group-info { flex: 1 1 auto; min-width: 0; }
     .group-main > .badge { margin-left: auto; }
     .group-child > td:first-child { border-left: 3px solid var(--accent-soft); }
+    .group-cell .bar { height: 4px; background: #e6ebf2; border-radius: 999px; margin-top: 8px; overflow: hidden; }
+    .group-cell .bar > span { display: block; height: 100%; border-radius: 999px; }
 
     /* ---- Cola: tabla en escritorio, cuadricula de tarjetas en movil ---- */
     #queue-cards { display: none; }
@@ -551,71 +554,47 @@
       return button;
     }
 
+    function buildActionButtons(item) {
+      const spec = {
+        PENDING: [["pause", "Pausar", "secondary"], ["cancel", "Cancelar", "danger"], ["delete", "Eliminar", "secondary"]],
+        DOWNLOADING: [["pause", "Pausar", "secondary"], ["cancel", "Cancelar", "danger"]],
+        PAUSED: [["resume", "Reanudar", ""], ["cancel", "Cancelar", "danger"], ["delete", "Eliminar", "secondary"]],
+        FAILED: [["retry", "Reintentar", ""], ["delete", "Eliminar", "secondary"]],
+        COMPLETED: [["retry", "Reprocesar", ""], ["delete", "Eliminar", "secondary"]],
+        CANCELED: [["retry", "Reintentar", ""], ["delete", "Eliminar", "secondary"]],
+      };
+      return (spec[item.status] || []).map(([action, label, variant]) => createActionButton(item, action, label, variant));
+    }
+
     function appendActionCell(row, item) {
       const cell = document.createElement("td");
       cell.className = "action-cell";
       const group = document.createElement("div");
       group.className = "action-group";
-
-      if (item.status === "PENDING") {
-        group.append(
-          createActionButton(item, "pause", "Pausar", "secondary"),
-          createActionButton(item, "cancel", "Cancelar", "danger"),
-          createActionButton(item, "delete", "Eliminar", "secondary"),
-        );
-      } else if (item.status === "DOWNLOADING") {
-        group.append(
-          createActionButton(item, "pause", "Pausar", "secondary"),
-          createActionButton(item, "cancel", "Cancelar", "danger"),
-        );
-      } else if (item.status === "PAUSED") {
-        group.append(
-          createActionButton(item, "resume", "Reanudar"),
-          createActionButton(item, "cancel", "Cancelar", "danger"),
-          createActionButton(item, "delete", "Eliminar", "secondary"),
-        );
-      } else if (item.status === "FAILED") {
-        group.append(
-          createActionButton(item, "retry", "Reintentar"),
-          createActionButton(item, "delete", "Eliminar", "secondary"),
-        );
-      } else if (item.status === "COMPLETED") {
-        group.append(
-          createActionButton(item, "retry", "Reprocesar"),
-          createActionButton(item, "delete", "Eliminar", "secondary"),
-        );
-      } else if (item.status === "CANCELED") {
-        group.append(
-          createActionButton(item, "retry", "Reintentar"),
-          createActionButton(item, "delete", "Eliminar", "secondary"),
-        );
-      }
-
+      for (const button of buildActionButtons(item)) group.appendChild(button);
       cell.appendChild(group);
       row.appendChild(cell);
       return cell;
     }
 
+    function buildErrorButton(item) {
+      if (!item.error) return null;
+      errorDetails.set(String(item.id), { title: `Error en descarga #${item.id}`, text: item.error });
+      const errorButton = document.createElement("button");
+      errorButton.className = "error-button";
+      errorButton.type = "button";
+      errorButton.dataset.errorId = item.id;
+      errorButton.title = "Ver error";
+      errorButton.setAttribute("aria-label", `Ver error de la descarga ${item.id}`);
+      errorButton.textContent = "!";
+      return errorButton;
+    }
+
     function appendErrorCell(row, item) {
       const cell = document.createElement("td");
       cell.className = "error-cell";
-
-      if (item.error) {
-        errorDetails.set(String(item.id), {
-          title: `Error en descarga #${item.id}`,
-          text: item.error,
-        });
-
-        const errorButton = document.createElement("button");
-        errorButton.className = "error-button";
-        errorButton.type = "button";
-        errorButton.dataset.errorId = item.id;
-        errorButton.title = "Ver error";
-        errorButton.setAttribute("aria-label", `Ver error de la descarga ${item.id}`);
-        errorButton.textContent = "!";
-        cell.appendChild(errorButton);
-      }
-
+      const errorButton = buildErrorButton(item);
+      if (errorButton) cell.appendChild(errorButton);
       row.appendChild(cell);
       return cell;
     }
@@ -794,25 +773,73 @@
       const cell = document.createElement("td");
       cell.colSpan = 9;
       cell.className = "group-cell";
+      const total = group.items.length;
       const done = group.items.filter((i) => i.status === "COMPLETED").length;
       const st = aggregateStatus(group.items);
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      const eta = fmtEta(etaSeconds(groupId, done, total, st));
       const img = (group.items.find((i) => i.metadata_image_url) || {}).metadata_image_url;
       cell.innerHTML = `
         <div class="group-main">
           ${img ? `<img class="cover" src="${img}" alt="" loading="lazy">` : `<div class="cover cover-placeholder">AL</div>`}
-          <div>
+          <div class="group-info">
             <div class="media-title"></div>
-            <div class="media-meta">Álbum · ${done}/${group.items.length} completadas</div>
+            <div class="media-meta">Álbum · ${done}/${total} completadas${eta ? ` · ETA ${eta}` : ""}</div>
           </div>
           <span class="badge ${st}">${statusLabels[st] || st}</span>
           <div class="action-group">
             <button class="action-button danger" type="button" data-group-delete="${groupId}" title="Eliminar álbum"></button>
           </div>
-        </div>`;
+        </div>
+        <div class="bar"><span style="width:${pct}%; background:${getProgressColor({ status: st })}"></span></div>`;
       cell.querySelector(".media-title").textContent = group.title;
       cell.querySelector("[data-group-delete]").appendChild(createIcon("delete"));
       row.appendChild(cell);
       return row;
+    }
+
+    // Cabecera de "unidad" para un album/playlist que es UNA sola descarga (enlace
+    // directo de Spotify): mismo aspecto que la cabecera de grupo de Deezer.
+    function buildUnitHeader(item, expanded) {
+      const row = document.createElement("tr");
+      row.className = "group-row";
+      row.dataset.downloadId = item.id;
+      row.appendChild(createExpandCell(item, expanded));  // data-expand-id → toggleDownload
+
+      const cell = document.createElement("td");
+      cell.colSpan = 9;
+      cell.className = "group-cell";
+      const total = Number(item.progress_total || 0);
+      const done = item.status === "COMPLETED" ? total : Number(item.progress_current || 0);
+      const typeLabel = item.metadata_type === "playlist" ? "Playlist" : "Álbum";
+      const eta = fmtEta(etaSeconds(item.id, done, total, item.status));
+      const meta = (total ? `${typeLabel} · ${done}/${total} completadas` : `${typeLabel} · ${statusLabels[item.status] || ""}`)
+        + (eta ? ` · ETA ${eta}` : "");
+      const img = item.metadata_image_url;
+      const pct = getProgressPercent(item);
+      cell.innerHTML = `
+        <div class="group-main">
+          ${img ? `<img class="cover" src="${img}" alt="" loading="lazy">` : `<div class="cover cover-placeholder">${item.metadata_type === "playlist" ? "PL" : "AL"}</div>`}
+          <div class="group-info">
+            <div class="media-title"></div>
+            <div class="media-meta"></div>
+          </div>
+          <span class="badge ${item.status}">${statusLabels[item.status] || item.status}</span>
+          <div class="action-group"></div>
+        </div>
+        <div class="bar"><span style="width:${pct}%; background:${getProgressColor(item)}"></span></div>`;
+      cell.querySelector(".media-title").textContent = item.metadata_title || getFallbackTitle(item);
+      cell.querySelector(".media-meta").textContent = meta;
+      const group = cell.querySelector(".action-group");
+      const errorButton = buildErrorButton(item);
+      if (errorButton) group.appendChild(errorButton);
+      for (const button of buildActionButtons(item)) group.appendChild(button);
+      row.appendChild(cell);
+      return row;
+    }
+
+    function isMultiTrackUnit(item) {
+      return !item.group_id && (item.metadata_type === "album" || item.metadata_type === "playlist");
     }
 
     function renderItems(items) {
@@ -837,7 +864,15 @@
 
       for (const entry of order) {
         if (entry.type === "single") {
-          for (const r of buildDownloadRows(entry.item)) queueBody.appendChild(r);
+          const item = entry.item;
+          if (isMultiTrackUnit(item)) {
+            // Album/playlist de enlace directo: cabecera tipo album + pistas al desplegar.
+            const expanded = expandedDownloads.has(String(item.id));
+            queueBody.appendChild(buildUnitHeader(item, expanded));
+            queueBody.appendChild(createTrackDetailsRow(item, expanded, 10));
+          } else {
+            for (const r of buildDownloadRows(item)) queueBody.appendChild(r);
+          }
         } else {
           const group = groups.get(entry.id);
           const expanded = expandedDownloads.has(entry.id);
