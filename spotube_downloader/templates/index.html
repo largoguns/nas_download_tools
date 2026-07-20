@@ -905,7 +905,11 @@
     }
 
     let queuePage = 1;
-    const QUEUE_PER_PAGE = 25;
+    const QUEUE_PER_PAGE = 20;  // unidades (discos/playlists/canciones) por pagina
+
+    function pluralize(n, singular) {
+      return `${n} ${singular}${n === 1 ? "" : "s"}`;
+    }
 
     async function loadStatus() {
       const response = await fetch(`${API_BASE}/status?page=${queuePage}&per_page=${QUEUE_PER_PAGE}`, { cache: "no-store" });
@@ -916,7 +920,15 @@
       const totalPages = data.total_pages || 1;
       renderItems(data.items || []);      // tabla (escritorio)
       renderCards(data.items || []);      // cuadricula de tarjetas (movil)
-      document.querySelector("#queuePageInfo").textContent = `Pag. ${queuePage}/${totalPages} · ${data.total || 0}`;
+
+      const s = data.summary || {};
+      const parts = [];
+      if (s.discos) parts.push(pluralize(s.discos, "disco"));
+      if (s.playlists) parts.push(pluralize(s.playlists, "playlist"));
+      if (s.sueltas) parts.push(pluralize(s.sueltas, "suelta"));
+      const breakdown = parts.length ? ` · ${parts.join(" · ")}` : "";
+      const songs = s.canciones ? ` · ${pluralize(s.canciones, "cancion")}` : "";
+      document.querySelector("#queuePageInfo").textContent = `Pag. ${queuePage}/${totalPages}${songs}${breakdown}`;
       document.querySelector("#queuePrev").disabled = queuePage <= 1;
       document.querySelector("#queueNext").disabled = queuePage >= totalPages;
       updatedAt.textContent = `Actualizado ${formatDate(new Date().toISOString())}`;

@@ -542,7 +542,128 @@ def enqueue_query(
         return cursor.lastrowid
 
 
-def list_downloads(limit):
+_QUEUE_ORDER_SQL = """
+    ORDER BY
+       CASE COALESCE(control_status, status)
+           WHEN 'DOWNLOADING' THEN 0
+           WHEN 'PENDING' THEN 1
+           WHEN 'PAUSED' THEN 2
+           WHEN 'CANCELED' THEN 3
+           ELSE 4
+       END,
+       CASE
+           WHEN COALESCE(control_status, status) IN ('DOWNLOADING', 'PENDING') THEN id
+           ELSE -id
+       END
+"""
+
+
+def queue_summary():
+    """Recuento por unidades visibles: discos, playlists, canciones sueltas y
+    total de canciones (album=filas, playlist/album-Spotify=pistas internas)."""
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT
+              (SELECT COUNT(DISTINCT group_id) FROM downloads WHERE group_id IS NOT NULL) AS deezer_albums,
+              (SELECT COUNT(*) FROM downloads WHERE group_id IS NULL AND metadata_type = 'album') AS spotify_albums,
+              (SELECT COUNT(*) FROM downloads WHERE group_id IS NULL AND metadata_type = 'playlist') AS playlists,
+              (SELECT COUNT(*) FROM downloads WHERE group_id IS NULL AND metadata_type NOT IN ('album', 'playlist')) AS singles,
+              (SELECT COUNT(*) FROM downloads WHERE group_id IS NOT NULL) AS album_song_rows,
+              (SELECT COUNT(*) FROM download_tracks dt JOIN downloads d ON d.id = dt.download_id
+                 WHERE d.group_id IS NULL AND d.metadata_type IN ('album', 'playlist')) AS multi_song_rows
+            """,
+        ).fetchone()
+    discos = row["deezer_albums"] + row["spotify_albums"]
+    songs = row["album_song_rows"] + row["singles"] + row["multi_song_rows"]
+    return {
+        "discos": discos,
+        "playlists": row["playlists"],
+        "sueltas": row["singles"],
+        "canciones": songs,
+    }
+
+
+def queue_page_ids(page, per_page):
+    """Pagina por UNIDAD (album = group_id; playlist/cancion = fila) para que
+    cada pagina tenga un numero coherente de tarjetas y los albumes no se partan.
+
+    Devuelve (ids_de_las_filas_de_la_pagina, page, total_pages, total_units).
+    """
+    with get_connection() as connection:
+        rows = connection.execute(
+            "SELECT id, group_id, status, control_status FROM downloads" + _QUEUE_ORDER_SQL,
+        ).fetchall()
+
+    order = []
+    units = {}
+    for row in rows:
+        key = row["group_id"] or f"id:{row['id']}"
+        if key not in units:
+            units[key] = []
+            order.append(key)
+        units[key].append(row["id"])
+
+    total_units = len(order)
+    total_pages = max(1, (total_units + per_page - 1) // per_page)
+    page = min(max(1, page), total_pages)
+    start = (page - 1) * per_page
+    page_keys = order[start:start + per_page]
+    page_ids = [row_id for key in page_keys for row_id in units[key]]
+    return page_ids, page, total_pages, total_units
+
+
+def list_downloads_by_ids(ids):
+    """Devuelve las filas (con sus tracks) para los ids dados, en ese mismo orden."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with get_connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT id, url,
+                   status AS worker_status,
+                   COALESCE(control_status, status) AS status,
+                   control_status,
+                   created_at, updated_at, started_at, finished_at,
+                   next_attempt_at, return_code, error, attempt_count,
+                   metadata_title, metadata_artist, metadata_type,
+                   metadata_image_url, metadata_status, metadata_error,
+                   metadata_updated_at,
+                   progress_current, progress_total, progress_title,
+                   group_id, group_title
+              FROM downloads
+             WHERE id IN ({placeholders})
+            """,
+            ids,
+        ).fetchall()
+        by_id = {row["id"]: dict(row) for row in rows}
+
+        track_rows = connection.execute(
+            f"""
+            SELECT download_id, position, title, artist, url, status, error, updated_at
+              FROM download_tracks
+             WHERE download_id IN ({placeholders})
+             ORDER BY download_id, position
+            """,
+            ids,
+        ).fetchall()
+
+    tracks_by_download = {row_id: [] for row_id in ids}
+    for row in track_rows:
+        tracks_by_download[row["download_id"]].append(dict(row))
+
+    items = []
+    for row_id in ids:  # preserva el orden de paginacion por unidad
+        item = by_id.get(row_id)
+        if not item:
+            continue
+        item["tracks"] = tracks_by_download.get(row_id, [])
+        items.append(item)
+    return items
+
+
+def list_downloads(limit, offset=0):
     with get_connection() as connection:
         rows = connection.execute(
             """
@@ -570,9 +691,9 @@ def list_downloads(limit):
                     WHEN COALESCE(control_status, status) IN ('DOWNLOADING', 'PENDING') THEN id
                     ELSE -id
                 END
-             LIMIT ?
+             LIMIT ? OFFSET ?
             """,
-            (limit,),
+            (limit, offset),
         ).fetchall()
 
         items = [dict(row) for row in rows]
@@ -684,13 +805,18 @@ def finish_job(job_id, status, return_code=None, error=None):
             (status, now, now, return_code, clean_error, status, status, job_id),
         )
 
-    if status == "COMPLETED":
-        on_job_completed(job_id)
+    if status in ("COMPLETED", "FAILED"):
+        on_job_finished(job_id, status)
 
 
-def on_job_completed(job_id):
-    """Al completar: si es una playlist, crea/actualiza la playlist en Navidrome
-    (en segundo plano, esperando al escaneo); si no, solo dispara el escaneo."""
+def on_job_finished(job_id, status):
+    """Al terminar un trabajo (completado o fallido):
+
+    - Si es una **playlist**, crea/actualiza la playlist en Navidrome con las
+      canciones que SI se hayan descargado (aunque alguna fallara). Se hace tanto
+      en COMPLETED como en FAILED, para no perder la playlist por un fallo parcial.
+    - Si no es playlist, solo dispara un escaneo de Navidrome cuando fue exito.
+    """
     with get_connection() as connection:
         row = connection.execute(
             "SELECT metadata_type, metadata_title FROM downloads WHERE id = ?",
@@ -703,7 +829,7 @@ def on_job_completed(job_id):
             args=(job_id, row["metadata_title"]),
             daemon=True,
         ).start()
-    else:
+    elif status == "COMPLETED":
         navidrome.notify()  # nueva musica: escanea Navidrome (con debounce)
 
 
@@ -1919,14 +2045,25 @@ def catalog_add():
 @app.get("/status")
 def status():
     try:
-        limit = int(request.args.get("limit", "100"))
+        per_page = int(request.args.get("per_page", "20"))
     except ValueError:
-        limit = 100
+        per_page = 20
+    per_page = min(max(per_page, 1), 100)
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page = 1
 
-    limit = min(max(limit, 1), 200)
+    page_ids, page, total_pages, total_units = queue_page_ids(page, per_page)
+
     return jsonify(
         {
-            "items": list_downloads(limit),
+            "items": list_downloads_by_ids(page_ids),
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "total_units": total_units,
+            "summary": queue_summary(),
             "config": {
                 "spotdl_audio_providers": SPOTDL_AUDIO_PROVIDERS,
                 "spotdl_reprocess_missing_only": SPOTDL_REPROCESS_MISSING_ONLY,
