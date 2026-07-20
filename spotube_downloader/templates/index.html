@@ -39,6 +39,9 @@
     .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(12px, 2.4vw, 16px); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
     .panel > h2 { margin-bottom: 12px; }
     .queue-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .queue-head-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .pager { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 700; }
+    .pager .action-button:disabled { opacity: 0.45; }
     .updated-at { color: var(--muted); font-size: 0.82rem; font-weight: 600; }
 
     /* ---- Formulario ---- */
@@ -250,7 +253,14 @@
         <section aria-labelledby="queue-title">
           <div class="queue-header">
             <h2 id="queue-title">Estado de la cola</h2>
-            <span id="updated-at" class="updated-at"></span>
+            <div class="queue-head-right">
+              <span class="pager">
+                <button id="queuePrev" class="action-button secondary" type="button" title="Anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+                <span id="queuePageInfo" class="muted small">-</span>
+                <button id="queueNext" class="action-button secondary" type="button" title="Siguiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+              </span>
+              <span id="updated-at" class="updated-at"></span>
+            </div>
           </div>
           <div id="message" class="message" role="status" aria-live="polite"></div>
           <div class="panel">
@@ -894,15 +904,30 @@
       }
     }
 
+    let queuePage = 1;
+    const QUEUE_PER_PAGE = 25;
+
     async function loadStatus() {
-      const response = await fetch(`${API_BASE}/status`, { cache: "no-store" });
+      const response = await fetch(`${API_BASE}/status?page=${queuePage}&per_page=${QUEUE_PER_PAGE}`, { cache: "no-store" });
       if (!response.ok) throw new Error("No se pudo cargar la cola.");
       const data = await response.json();
       maxAttempts = data.config?.spotdl_max_attempts || maxAttempts;
+      queuePage = data.page || 1;
+      const totalPages = data.total_pages || 1;
       renderItems(data.items || []);      // tabla (escritorio)
       renderCards(data.items || []);      // cuadricula de tarjetas (movil)
+      document.querySelector("#queuePageInfo").textContent = `Pag. ${queuePage}/${totalPages} · ${data.total || 0}`;
+      document.querySelector("#queuePrev").disabled = queuePage <= 1;
+      document.querySelector("#queueNext").disabled = queuePage >= totalPages;
       updatedAt.textContent = `Actualizado ${formatDate(new Date().toISOString())}`;
     }
+
+    document.querySelector("#queuePrev").addEventListener("click", () => {
+      if (queuePage > 1) { queuePage -= 1; loadStatus().catch((e) => setMessage(e.message, true)); }
+    });
+    document.querySelector("#queueNext").addEventListener("click", () => {
+      queuePage += 1; loadStatus().catch((e) => setMessage(e.message, true));
+    });
 
     // ---- Cuadricula de tarjetas para movil ----
     const queueCards = document.querySelector("#queue-cards");
