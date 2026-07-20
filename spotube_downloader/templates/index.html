@@ -182,10 +182,20 @@
     .group-main { display: flex; align-items: center; gap: 12px; }
     .group-main .cover { width: 44px; height: 44px; }
     .group-info { flex: 1 1 auto; min-width: 0; }
-    .group-main > .badge { margin-left: auto; }
+    .group-info .media-title { overflow-wrap: anywhere; }
+    .group-main > .badge { margin-left: auto; flex: none; }
     .group-child > td:first-child { border-left: 3px solid var(--accent-soft); }
+    .group-child .group-cell { background: #fbfdfd; }
     .group-cell .bar { height: 4px; background: #e6ebf2; border-radius: 999px; margin-top: 8px; overflow: hidden; }
     .group-cell .bar > span { display: block; height: 100%; border-radius: 999px; }
+    .cover-wrap { position: relative; flex: none; }
+    .cover-wrap .cover { width: 46px; height: 46px; }
+    .cover-wrap .cover-placeholder { font-size: 1.3rem; }
+    .type-badge { position: absolute; bottom: -5px; right: -5px; width: 21px; height: 21px; border-radius: 999px; background: #fff; border: 1px solid var(--line); display: grid; place-items: center; font-size: 0.7rem; box-shadow: 0 1px 2px rgba(16,24,40,.2); }
+
+    /* La cola es una lista uniforme: se ocultan las cabeceras de columna de la
+       tabla principal (no las de la sub-tabla de pistas). */
+    .table-wrap > table > thead { display: none; }
 
     /* ---- Cola: tabla en escritorio, cuadricula de tarjetas en movil ---- */
     #queue-cards { display: none; }
@@ -781,7 +791,10 @@
       const img = (group.items.find((i) => i.metadata_image_url) || {}).metadata_image_url;
       cell.innerHTML = `
         <div class="group-main">
-          ${img ? `<img class="cover" src="${img}" alt="" loading="lazy">` : `<div class="cover cover-placeholder">AL</div>`}
+          <div class="cover-wrap">
+            ${img ? `<img class="cover" src="${img}" alt="" loading="lazy">` : `<div class="cover cover-placeholder">💿</div>`}
+            <span class="type-badge" title="Álbum">💿</span>
+          </div>
           <div class="group-info">
             <div class="media-title"></div>
             <div class="media-meta">Álbum · ${done}/${total} completadas${eta ? ` · ETA ${eta}` : ""}</div>
@@ -798,28 +811,58 @@
       return row;
     }
 
-    // Cabecera de "unidad" para un album/playlist que es UNA sola descarga (enlace
-    // directo de Spotify): mismo aspecto que la cabecera de grupo de Deezer.
-    function buildUnitHeader(item, expanded) {
-      const row = document.createElement("tr");
-      row.className = "group-row";
-      row.dataset.downloadId = item.id;
-      row.appendChild(createExpandCell(item, expanded));  // data-expand-id → toggleDownload
+    function isMultiTrackUnit(item) {
+      return !item.group_id && (item.metadata_type === "album" || item.metadata_type === "playlist");
+    }
 
+    function typeInfo(item) {
+      if (item.metadata_type === "playlist") return { icon: "🎧", label: "Playlist" };
+      if (item.metadata_type === "album") return { icon: "💿", label: "Álbum" };
+      return { icon: "🎵", label: "Canción" };
+    }
+
+    // Fila unificada de la cola (mismo aspecto para disco/playlist/cancion), con
+    // icono de tipo. Los albumes/playlists de una sola descarga se pueden desplegar.
+    function buildQueueRow(item, opts = {}) {
+      const expanded = expandedDownloads.has(String(item.id));
+      const multi = isMultiTrackUnit(item);
+      const info = typeInfo(item);
+      const row = document.createElement("tr");
+      row.className = "group-row" + (opts.child ? " group-child" : "");
+      row.dataset.downloadId = item.id;
+      if (opts.groupId) row.dataset.group = opts.groupId;
+
+      // Toggle de desplegar solo en album/playlist de una descarga (no en hijos).
+      if (multi && !opts.child) {
+        row.appendChild(createExpandCell(item, expanded));
+      } else {
+        const spacer = document.createElement("td");
+        spacer.className = "expand-cell";
+        row.appendChild(spacer);
+      }
+
+      const total = Number(item.progress_total || 0);
+      const done = item.status === "COMPLETED" ? total : Number(item.progress_current || 0);
+      const eta = fmtEta(etaSeconds(item.id, done, total, item.status));
+      let meta;
+      if (multi) {
+        meta = `${info.label} · ${total ? `${done}/${total} completadas` : (statusLabels[item.status] || "")}`;
+      } else {
+        meta = [info.label, item.metadata_artist || ""].filter(Boolean).join(" · ");
+      }
+      meta += eta ? ` · ETA ${eta}` : "";
+
+      const img = item.metadata_image_url;
+      const pct = getProgressPercent(item);
       const cell = document.createElement("td");
       cell.colSpan = 9;
       cell.className = "group-cell";
-      const total = Number(item.progress_total || 0);
-      const done = item.status === "COMPLETED" ? total : Number(item.progress_current || 0);
-      const typeLabel = item.metadata_type === "playlist" ? "Playlist" : "Álbum";
-      const eta = fmtEta(etaSeconds(item.id, done, total, item.status));
-      const meta = (total ? `${typeLabel} · ${done}/${total} completadas` : `${typeLabel} · ${statusLabels[item.status] || ""}`)
-        + (eta ? ` · ETA ${eta}` : "");
-      const img = item.metadata_image_url;
-      const pct = getProgressPercent(item);
       cell.innerHTML = `
         <div class="group-main">
-          ${img ? `<img class="cover" src="${img}" alt="" loading="lazy">` : `<div class="cover cover-placeholder">${item.metadata_type === "playlist" ? "PL" : "AL"}</div>`}
+          <div class="cover-wrap">
+            ${img ? `<img class="cover" src="${img}" alt="" loading="lazy">` : `<div class="cover cover-placeholder">${info.icon}</div>`}
+            <span class="type-badge" title="${info.label}">${info.icon}</span>
+          </div>
           <div class="group-info">
             <div class="media-title"></div>
             <div class="media-meta"></div>
@@ -836,10 +879,6 @@
       for (const button of buildActionButtons(item)) group.appendChild(button);
       row.appendChild(cell);
       return row;
-    }
-
-    function isMultiTrackUnit(item) {
-      return !item.group_id && (item.metadata_type === "album" || item.metadata_type === "playlist");
     }
 
     function renderItems(items) {
@@ -865,22 +904,20 @@
       for (const entry of order) {
         if (entry.type === "single") {
           const item = entry.item;
+          queueBody.appendChild(buildQueueRow(item));
+          // Album/playlist de una descarga: fila de pistas desplegable.
           if (isMultiTrackUnit(item)) {
-            // Album/playlist de enlace directo: cabecera tipo album + pistas al desplegar.
             const expanded = expandedDownloads.has(String(item.id));
-            queueBody.appendChild(buildUnitHeader(item, expanded));
             queueBody.appendChild(createTrackDetailsRow(item, expanded, 10));
-          } else {
-            for (const r of buildDownloadRows(item)) queueBody.appendChild(r);
           }
         } else {
           const group = groups.get(entry.id);
           const expanded = expandedDownloads.has(entry.id);
           queueBody.appendChild(buildGroupHeader(entry.id, group, expanded));
           for (const item of group.items) {
-            for (const r of buildDownloadRows(item, { child: true, hidden: !expanded, groupId: entry.id })) {
-              queueBody.appendChild(r);
-            }
+            const childRow = buildQueueRow(item, { child: true, groupId: entry.id });
+            if (!expanded) childRow.hidden = true;
+            queueBody.appendChild(childRow);
           }
         }
       }
