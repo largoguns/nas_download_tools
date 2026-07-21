@@ -30,6 +30,19 @@ from anime_sources.registry import load_sources
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", BASE_DIR / "data" / "anime_queue.db"))
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", BASE_DIR / "downloads"))
+
+
+def download_root_for(source) -> Path:
+    """Directorio de descargas de una fuente.
+
+    Todo cuelga de ``DOWNLOAD_DIR`` pero dentro de un subdirectorio con el id
+    del scraper (``DOWNLOAD_DIR/<source_id>/<anime>/<capitulo>``), de modo que
+    cada fuente queda separada sin necesidad de volumenes distintos.
+    """
+    source_id = getattr(source, "id", "") or str(source)
+    return DOWNLOAD_DIR / sanitize_path_segment(source_id)
+
+
 PORT = int(os.environ.get("PORT", "8090"))
 WORKER_SLEEP_SECONDS = max(1, int(os.environ.get("WORKER_SLEEP_SECONDS", "3")))
 DOWNLOAD_CONCURRENCY = max(1, int(os.environ.get("DOWNLOAD_CONCURRENCY", "1")))
@@ -201,11 +214,11 @@ def require_download_source(source_id: str):
     return source
 
 
-def ensure_within_download_dir(path: Path) -> Path:
-    root = DOWNLOAD_DIR.resolve()
+def ensure_within_download_dir(path: Path, root: Path) -> Path:
+    root = root.resolve()
     target = path.resolve()
     if not target.is_relative_to(root):
-        raise SourceError("La fuente intento escribir fuera de DOWNLOAD_DIR")
+        raise SourceError("La fuente intento escribir fuera del directorio de descargas")
     return target
 
 
@@ -529,16 +542,17 @@ def order_streams(streams: list) -> list:
     return sorted(streams, key=sort_key, reverse=True)
 
 
-def find_existing_download(item: dict[str, Any]) -> Path | None:
+def find_existing_download(item: dict[str, Any], source) -> Path | None:
     """Devuelve el fichero ya descargado para este episodio, si existe.
 
-    Busca en ``DOWNLOAD_DIR/{anime}/`` un fichero con el mismo nombre base que el
-    episodio (cualquier extension, ignorando ``.part`` y ficheros vacios). Asi un
-    capitulo ya bajado no se vuelve a descargar salvo que se fuerce.
+    Busca en ``<download_dir de la fuente>/{anime}/`` un fichero con el mismo
+    nombre base que el episodio (cualquier extension, ignorando ``.part`` y
+    ficheros vacios). Asi un capitulo ya bajado no se vuelve a descargar salvo
+    que se fuerce.
     """
     anime_dir = sanitize_path_segment(item.get("anime_title") or "anime")
     episode = sanitize_path_segment(item.get("episode_title") or "episode")
-    folder = DOWNLOAD_DIR / anime_dir
+    folder = download_root_for(source) / anime_dir
     if not folder.is_dir():
         return None
     for candidate in folder.iterdir():
@@ -561,7 +575,7 @@ def download_item(item: dict[str, Any]) -> None:
     # Si el fichero destino ya existe, el capitulo ya esta descargado: se omite
     # (y se evita resolver streams) salvo que se haya pedido forzar la descarga.
     if not item.get("force_redownload"):
-        existing = find_existing_download(item)
+        existing = find_existing_download(item, source)
         if existing is not None:
             size = existing.stat().st_size
             logging.info("Episodio ya descargado, se omite: %s", existing)
@@ -647,13 +661,15 @@ def download_stream_to_disk(item: dict[str, Any], source, stream) -> None:
     Limpia su fichero parcial ante cualquier error para que el siguiente
     servidor (o un reintento) empiece limpio.
     """
+    download_root = download_root_for(source)
     output_path = ensure_within_download_dir(
         source.build_filename(
             item["anime_title"],
             item["episode_title"],
             stream,
-            DOWNLOAD_DIR,
+            download_root,
         ),
+        download_root,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = output_path.with_suffix(output_path.suffix + ".part")

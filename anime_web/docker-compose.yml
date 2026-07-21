@@ -32,6 +32,7 @@ services:
       JELLYFIN_REFRESH_DEBOUNCE_SECONDS: ${JELLYFIN_REFRESH_DEBOUNCE_SECONDS:-30}
     volumes:
       - ${ANIME_DATA_DIR:-./data}:/data
+      # Dentro se crea un subdirectorio por scraper: /downloads/<source_id>/<anime>/...
       - ${ANIME_DOWNLOAD_DIR:-./downloads}:/downloads
     restart: unless-stopped
     networks:
