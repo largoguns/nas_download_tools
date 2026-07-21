@@ -1332,6 +1332,16 @@ def api_search():
         return json_error(str(exc))
 
 
+@app.get("/api/directory")
+def api_directory():
+    try:
+        source = require_source(request.args.get("source", ""))
+        page = max(1, int(request.args.get("page", "1")))
+        return jsonify(source.directory(page).to_dict())
+    except Exception as exc:
+        return json_error(str(exc))
+
+
 @app.get("/api/genre")
 def api_genre():
     try:

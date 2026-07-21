@@ -94,6 +94,10 @@ class JkanimeSource(BaseAnimeSource):
             has_next=False,
         )
 
+    def directory(self, page: int = 1) -> AnimePage:
+        # /directorio (sin filtro) va ordenado por mas recientes; pagina con ?p=N.
+        return self._parse_directory_page(self.html(f"/directorio?p={max(1, page)}"), page)
+
     def by_genre(self, genre: str, page: int = 1) -> AnimePage:
         slug = (genre or "").strip().strip("/")
         if not slug:
@@ -389,7 +393,21 @@ class JkanimeSource(BaseAnimeSource):
             items=items,
             page=page,
             has_next=bool(payload.get("next_page_url")),
+            total_pages=self._directory_total_pages(document),
         )
+
+    def _directory_total_pages(self, document: BeautifulSoup) -> int | None:
+        # El paginador .pagination lleva como ultimo <li> el boton "siguiente";
+        # el penultimo indica el numero de la ultima pagina del filtro actual.
+        pagination = document.select_one(".pagination")
+        if not pagination:
+            return None
+        numbers = [
+            int(match.group())
+            for li in pagination.select("li")
+            if (match := re.search(r"\d+", li.get_text(strip=True)))
+        ]
+        return max(numbers) if numbers else None
 
     def _parse_search_items(self, document: BeautifulSoup) -> list[AnimeItem]:
         items: list[AnimeItem] = []

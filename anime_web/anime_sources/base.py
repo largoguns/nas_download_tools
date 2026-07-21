@@ -89,12 +89,14 @@ class AnimePage:
     items: list[AnimeItem]
     page: int = 1
     has_next: bool = False
+    total_pages: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "items": [item.to_dict() for item in self.items],
             "page": self.page,
             "has_next": self.has_next,
+            "total_pages": self.total_pages,
         }
 
 
@@ -234,6 +236,10 @@ class BaseAnimeSource(ABC):
 
     def search(self, query: str, page: int = 1) -> AnimePage:
         raise SourceError(f"{self.name} does not implement search")
+
+    def directory(self, page: int = 1) -> AnimePage:
+        """Listado del directorio (por defecto, el mismo que popular)."""
+        return self.popular(page)
 
     def by_genre(self, genre: str, page: int = 1) -> AnimePage:
         raise SourceError(f"{self.name} does not implement genre listings")

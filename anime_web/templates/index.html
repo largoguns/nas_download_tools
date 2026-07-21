@@ -337,6 +337,12 @@
 
     /* ---------------- Catalogo en cuadricula ---------------- */
     .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    .catalog-pager { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; color: var(--muted); font-weight: 700; flex-wrap: wrap; }
+    .catalog-pages { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .page-btn { min-width: 34px; height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--text); font-weight: 700; cursor: pointer; }
+    .page-btn:hover { border-color: var(--accent); }
+    .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; cursor: default; }
+    .page-ellipsis { min-width: 20px; text-align: center; color: var(--muted); }
     .acard { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; display: flex; flex-direction: column; text-align: left; padding: 0; cursor: pointer; font: inherit; color: inherit; }
     .acard:hover, .acard:focus-visible { border-color: var(--accent); outline: none; }
     .acard-cover { aspect-ratio: 2 / 3; background: #eef2f6; }
@@ -422,7 +428,6 @@
               <input id="searchInput" type="search" placeholder="Titulo">
             </div>
             <button id="searchButton" class="icon-btn" type="button" title="Buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
-            <button id="popularButton" class="icon-btn ghost" type="button" title="Popular"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M21 7v6h-6"/></svg></button>
           </div>
           <div id="genrePanel" class="genre-row" hidden>
             <label for="genreSelect">Buscar por genero</label>
@@ -464,9 +469,14 @@
           <div class="panel catalog-pane">
             <div class="panel-head">
               <h2>Catalogo</h2>
-              <button id="latestButton" class="icon-btn ghost" type="button" title="Recientes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>
+              <button id="directoryButton" class="icon-btn ghost" type="button" title="Directorio (recientes)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>
             </div>
             <div id="results" class="result-grid"></div>
+            <div id="catalogPager" class="catalog-pager" hidden>
+              <button id="catalogPrev" class="icon-btn ghost" type="button" title="Anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+              <div id="catalogPages" class="catalog-pages"></div>
+              <button id="catalogNext" class="icon-btn ghost" type="button" title="Siguiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+            </div>
           </div>
 
           <div class="panel detail-pane">
@@ -634,8 +644,7 @@
       const source = currentSource();
       const direct = isDirectSource(source);
       $("directPanel").hidden = !direct;
-      $("popularButton").disabled = direct;
-      $("latestButton").disabled = !source || !source.capabilities || !source.capabilities.latest;
+      $("directoryButton").disabled = direct;
       $("searchInput").placeholder = direct ? "No aplica a URL directa" : "Titulo";
       populateGenres(source, direct);
 
@@ -669,10 +678,11 @@
     async function loadGenre(genre) {
       const source = currentSource();
       if (!source || !genre) return;
-      setMessage("Cargando genero...");
-      const data = await api(`/api/genre?source=${encodeURIComponent(source.id)}&genre=${encodeURIComponent(genre)}`);
-      renderResults(data.items || []);
-      setMessage("");
+      catalog.mode = "genre";
+      catalog.genre = genre;
+      catalog.page = 1;
+      $("searchInput").value = "";
+      return loadCatalog();
     }
 
     function openGenre(value) {
@@ -798,38 +808,94 @@
         $("sourceSelect").value = preferred.id;
         $("selectedSource").textContent = preferred.name;
         updateSourceMode();
-        await loadPopular();
+        await loadDirectory();
       } else {
         renderResults([]);
         setMessage("No hay fuentes cargadas", true);
       }
     }
 
-    async function loadPopular() {
+    // Estado del catalogo: modo (directorio/busqueda/genero), pagina y si hay mas.
+    const catalog = { mode: "directory", query: "", genre: "", page: 1, hasNext: false, totalPages: null };
+
+    async function loadCatalog() {
       const source = currentSource();
       if (!source) return;
       if (isDirectSource(source)) {
         renderResults([]);
         setMessage("La fuente directa no tiene catalogo.");
+        updateCatalogPager(false);
         return;
       }
-      setMessage("Cargando catalogo...");
-      const data = await api(`/api/popular?source=${encodeURIComponent(source.id)}`);
+      setMessage("Cargando...");
+      const p = catalog.page;
+      let url;
+      if (catalog.mode === "search") {
+        url = `/api/search?source=${encodeURIComponent(source.id)}&q=${encodeURIComponent(catalog.query)}&page=${p}`;
+      } else if (catalog.mode === "genre") {
+        url = `/api/genre?source=${encodeURIComponent(source.id)}&genre=${encodeURIComponent(catalog.genre)}&page=${p}`;
+      } else {
+        url = `/api/directory?source=${encodeURIComponent(source.id)}&page=${p}`;
+      }
+      const data = await api(url);
+      catalog.hasNext = Boolean(data.has_next);
+      catalog.totalPages = Number.isFinite(data.total_pages) && data.total_pages > 0 ? data.total_pages : null;
       renderResults(data.items || []);
+      updateCatalogPager(true);
       setMessage("");
     }
 
-    async function loadLatest() {
-      const source = currentSource();
-      if (!source) return;
-      if (!source.capabilities || !source.capabilities.latest) {
-        setMessage("Esta fuente no ofrece recientes.");
+    // Devuelve la secuencia de paginas a mostrar: [1, "...", n-1, n, n+1, "...", total].
+    function pageWindow(current, total) {
+      const pages = new Set([1, total, current, current - 1, current + 1]);
+      const sorted = [...pages].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b);
+      const out = [];
+      let prev = 0;
+      for (const n of sorted) {
+        if (n - prev > 1) out.push("...");
+        out.push(n);
+        prev = n;
+      }
+      return out;
+    }
+
+    function updateCatalogPager(show) {
+      $("catalogPager").hidden = !show;
+      $("catalogPrev").disabled = catalog.page <= 1;
+      $("catalogNext").disabled = !catalog.hasNext && !(catalog.totalPages && catalog.page < catalog.totalPages);
+      const box = $("catalogPages");
+      // Sin total conocido, mostramos solo la pagina actual.
+      if (!catalog.totalPages) {
+        box.innerHTML = `<button class="page-btn active" type="button" disabled>${catalog.page}</button>`;
         return;
       }
-      setMessage("Cargando recientes...");
-      const data = await api(`/api/latest?source=${encodeURIComponent(source.id)}`);
-      renderResults(data.items || []);
-      setMessage("");
+      box.innerHTML = pageWindow(catalog.page, catalog.totalPages).map((n) => {
+        if (n === "...") return `<span class="page-ellipsis">&hellip;</span>`;
+        const active = n === catalog.page ? " active" : "";
+        const disabled = n === catalog.page ? " disabled" : "";
+        return `<button class="page-btn${active}" type="button" data-page="${n}"${disabled}>${n}</button>`;
+      }).join("");
+      box.querySelectorAll("button[data-page]").forEach((button) => {
+        button.addEventListener("click", () => goToPage(Number(button.dataset.page)));
+      });
+    }
+
+    function goToPage(target) {
+      if (!target || target === catalog.page) return;
+      if (catalog.totalPages) target = Math.min(target, catalog.totalPages);
+      catalog.page = Math.max(1, target);
+      loadCatalog().catch((error) => setMessage(error.message, true));
+    }
+
+    function loadDirectory() {
+      catalog.mode = "directory";
+      catalog.query = "";
+      catalog.genre = "";
+      catalog.page = 1;
+      const gs = $("genreSelect");
+      if (gs) gs.value = "";
+      $("searchInput").value = "";
+      return loadCatalog();
     }
 
     async function search() {
@@ -841,10 +907,15 @@
         return;
       }
       const q = $("searchInput").value.trim();
-      setMessage("Buscando...");
-      const data = await api(`/api/search?source=${encodeURIComponent(source.id)}&q=${encodeURIComponent(q)}`);
-      renderResults(data.items || []);
-      setMessage("");
+      if (!q) {
+        return loadDirectory();
+      }
+      catalog.mode = "search";
+      catalog.query = q;
+      catalog.page = 1;
+      const gs = $("genreSelect");
+      if (gs) gs.value = "";
+      return loadCatalog();
     }
 
     async function openAnime(item) {
@@ -1344,17 +1415,21 @@
       updateEpisodeToolbar();
       if (isDirectSource(source)) {
         renderResults([]);
+        updateCatalogPager(false);
         setMessage("");
       } else {
-        loadPopular().catch((error) => setMessage(error.message, true));
+        loadDirectory().catch((error) => setMessage(error.message, true));
       }
     });
     $("genreSelect").addEventListener("change", (event) => {
       if (event.target.value) loadGenre(event.target.value).catch((error) => setMessage(error.message, true));
     });
     $("searchButton").addEventListener("click", () => search().catch((error) => setMessage(error.message, true)));
-    $("popularButton").addEventListener("click", () => loadPopular().catch((error) => setMessage(error.message, true)));
-    $("latestButton").addEventListener("click", () => loadLatest().catch((error) => setMessage(error.message, true)));
+    $("directoryButton").addEventListener("click", () => loadDirectory().catch((error) => setMessage(error.message, true)));
+    $("catalogPrev").addEventListener("click", () => goToPage(catalog.page - 1));
+    $("catalogNext").addEventListener("click", () => {
+      if (catalog.hasNext || (catalog.totalPages && catalog.page < catalog.totalPages)) goToPage(catalog.page + 1);
+    });
     $("downloadAnimeButton").addEventListener("click", () => enqueueAnime().catch((error) => setMessage(error.message, true)));
     $("followButton").addEventListener("click", () => followCurrentAnime());
     $("backButton").addEventListener("click", () => $("view-buscar").classList.remove("detail-open"));
