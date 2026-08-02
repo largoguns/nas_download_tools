@@ -50,6 +50,36 @@ def _episode_number_for(item: dict[str, Any]) -> int:
         return int(item.get("position") or 1)
 
 
+_SERIES_BOUNDARY = {" ", ":", "-", "_", "."}
+
+
+def _parent_series_dir(provider_dir: Path, name: str) -> str:
+    """Reubica un especial bajo la serie madre si su carpeta ya existe.
+
+    Muchos OVAs/especiales tienen un titulo oficial que empieza por el de la
+    serie y sigue con un subtitulo propio (p. ej. "<Serie> <subtitulo del OVA>").
+    Si en ``provider_dir`` ya hay una carpeta cuyo nombre es un prefijo estricto
+    de ``name`` (en frontera de palabra), devolvemos ESE nombre para que el
+    especial caiga en el ``Specials/`` de la serie y Jellyfin los agrupe. Se
+    elige el prefijo mas largo (la serie mas especifica). Si no hay ninguno, se
+    respeta ``name``.
+    """
+    try:
+        candidates = [entry.name for entry in provider_dir.iterdir() if entry.is_dir()]
+    except OSError:
+        return name
+    best: str | None = None
+    for candidate in candidates:
+        if (
+            len(candidate) < len(name)
+            and name.startswith(candidate)
+            and name[len(candidate)] in _SERIES_BOUNDARY
+            and (best is None or len(candidate) > len(best))
+        ):
+            best = candidate
+    return best or name
+
+
 def plan_output(item: dict[str, Any], source) -> tuple[Path, str, Path]:
     """Carpeta destino, nombre base del fichero y raiz permitida (para validar).
 
@@ -68,6 +98,8 @@ def plan_output(item: dict[str, Any], source) -> tuple[Path, str, Path]:
     series = sanitize_path_segment(item.get("series_name") or item.get("anime_title") or "anime")
     episode = _episode_number_for(item)
     if kind == MEDIA_SPECIAL:
+        # Agrupa el especial bajo la serie madre si su carpeta ya existe.
+        series = _parent_series_dir(DOWNLOAD_DIR / provider, series)
         season = 0
         season_dir = "Specials"
     else:
