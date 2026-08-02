@@ -769,6 +769,14 @@ def download_stream_to_disk(item: dict[str, Any], source, stream) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = output_path.with_suffix(output_path.suffix + ".part")
 
+    # Deja constancia del servidor y el fichero destino en cuanto arranca la
+    # descarga, para que la cola muestre de donde y que se esta bajando.
+    update_item(
+        item["id"],
+        download_server=stream.label or "desconocido",
+        output_path=str(output_path),
+    )
+
     try:
         if is_hls_stream(stream):
             download_hls_stream(item, stream, output_path, temp_path)

@@ -1133,6 +1133,34 @@
       return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
     }
 
+    // Velocidad por item (EWMA sobre bytes entre sondeos). No recalcula si los
+    // bytes no cambiaron (re-render por toggle) para no falsear el promedio.
+    const _spd = new Map();
+    function itemSpeed(id, bytes, status) {
+      if (status !== "DOWNLOADING" || !bytes || bytes <= 0) { _spd.delete(id); return null; }
+      const prev = _spd.get(id);
+      if (prev && bytes === prev.value) return prev.speed > 0 ? prev.speed : null;
+      const now = Date.now() / 1000;
+      let speed = prev ? prev.speed : 0;
+      if (prev && now > prev.ts && bytes > prev.value) {
+        const inst = (bytes - prev.value) / (now - prev.ts);
+        speed = prev.speed ? prev.speed * 0.6 + inst * 0.4 : inst;
+      }
+      _spd.set(id, { value: bytes, ts: now, speed });
+      return speed > 0 ? speed : null;
+    }
+    function fmtSpeed(bps) {
+      if (!bps || bps <= 0) return "";
+      if (bps >= 1048576) return `${(bps / 1048576).toFixed(1)} MB/s`;
+      if (bps >= 1024) return `${Math.round(bps / 1024)} KB/s`;
+      return `${Math.round(bps)} B/s`;
+    }
+    function fileName(item) {
+      if (!item.output_path) return "";
+      const p = String(item.output_path).replace(/\\/g, "/");
+      return p.substring(p.lastIndexOf("/") + 1);
+    }
+
     function updateQueueBadge(downloads) {
       const active = downloads.filter((job) => ["DOWNLOADING", "PENDING"].includes(job.status)).length;
       const badge = $("queueBadge");
@@ -1148,16 +1176,21 @@
     }
 
     // Cuadricula de tarjetas de la cola para movil (sin detalle por capitulo).
-    function renderQueueCards(downloads) {
+    function renderQueueCards(downloads, liveSpeed) {
       const target = $("queue-cards");
       if (!downloads.length) {
         target.innerHTML = `<div class="empty">Cola vacia</div>`;
         return;
       }
+      const speeds = liveSpeed || new Map();
       target.innerHTML = downloads.map((item) => {
         const progress = progressPercent(item);
         const completed = item.progress_current || 0;
         const total = item.progress_total || (item.items ? item.items.length : 0);
+        const activeChild = (item.items || []).find((c) => c.status === "DOWNLOADING");
+        const liveBits = activeChild
+          ? [fmtSpeed(speeds.get(activeChild.id)), activeChild.download_server].filter(Boolean).join(" &middot; ")
+          : "";
         const actions = jobCardActions(item).map(([action, label, variant]) =>
           `<button class="icon-btn ${variant}" type="button" data-jobcard="${action}" data-id="${item.id}" title="${label}">${ACTION_ICON[action === "__delete" ? "delete" : action]}</button>`).join("");
         return `
@@ -1165,6 +1198,7 @@
             <div class="dcard-body">
               <div class="title">${escapeHtml(item.anime_title)}</div>
               <div class="meta">${escapeHtml(item.job_type)} &middot; ${completed}/${total} capitulos${(() => { const e = fmtEta(etaSeconds(item.id, completed, total, item.status)); return e ? ` &middot; ETA ${e}` : ""; })()}</div>
+              ${liveBits ? `<div class="meta">${liveBits}</div>` : ""}
               <div class="dcard-meta">
                 <span class="status ${escapeAttr(item.status)}">${escapeHtml(item.status)}</span>
                 <span class="dcard-count">${progress}%</span>
@@ -1184,11 +1218,36 @@
       });
     }
 
+    // Lineas de detalle de un capitulo: fichero, progreso/velocidad/ETA y servidor.
+    function childMeta(child, speed) {
+      const lines = [];
+      const fn = fileName(child);
+      if (fn) lines.push(`Fichero: ${escapeHtml(fn)}`);
+      if (child.status === "DOWNLOADING") {
+        const eta = (speed && child.total_bytes && child.bytes_downloaded < child.total_bytes)
+          ? fmtEta((child.total_bytes - child.bytes_downloaded) / speed) : "";
+        const bits = [itemBytes(child), fmtSpeed(speed), eta ? `ETA ${eta}` : ""].filter(Boolean);
+        if (bits.length) lines.push(bits.join(" &middot; "));
+      } else {
+        const b = itemBytes(child);
+        lines.push(b || escapeHtml(child.episode_url || ""));
+      }
+      if (child.download_server) lines.push(`Servidor: ${escapeHtml(child.download_server)}`);
+      if (child.error) lines.push(escapeHtml(child.error));
+      return lines.map((l) => `<div class="meta">${l}</div>`).join("");
+    }
+
     function renderQueue(downloads) {
       const target = $("queue");
       $("queueUpdated").textContent = new Date().toLocaleTimeString();
       updateQueueBadge(downloads);
-      renderQueueCards(downloads);
+      // Velocidad de cada capitulo en descarga, calculada una sola vez por render
+      // (la comparten la vista web y las tarjetas movil).
+      const liveSpeed = new Map();
+      downloads.forEach((job) => (job.items || []).forEach((child) => {
+        liveSpeed.set(child.id, itemSpeed(child.id, child.bytes_downloaded, child.status));
+      }));
+      renderQueueCards(downloads, liveSpeed);
       if (!downloads.length) {
         target.innerHTML = `<div class="empty">Cola vacia</div>`;
         return;
@@ -1198,15 +1257,17 @@
         const expanded = state.expandedJobs.has(String(item.id));
         const completed = item.progress_current || 0;
         const total = item.progress_total || (item.items ? item.items.length : 0);
+        const activeChild = (item.items || []).find((c) => c.status === "DOWNLOADING");
+        const liveBits = activeChild
+          ? [fmtSpeed(liveSpeed.get(activeChild.id)), activeChild.download_server].filter(Boolean).join(" &middot; ")
+          : "";
         const detail = expanded ? `
           <div class="queue-details">
             ${(item.items || []).map((child) => `
               <div class="queue-subitem">
                 <div>
                   <div class="title">${escapeHtml(child.episode_title)}</div>
-                  <div class="meta">${escapeHtml(itemBytes(child) || child.episode_url)}</div>
-                  ${child.download_server ? `<div class="meta">Servidor: ${escapeHtml(child.download_server)}</div>` : ""}
-                  ${child.error ? `<div class="meta">${escapeHtml(child.error)}</div>` : ""}
+                  ${childMeta(child, liveSpeed.get(child.id))}
                 </div>
                 <div class="subitem-actions">
                   <span class="status ${escapeAttr(child.status)}">${escapeHtml(child.status)}</span>
@@ -1227,6 +1288,7 @@
               <div>
                 <div class="title">${escapeHtml(item.anime_title)}</div>
                 <div class="meta">${escapeHtml(item.job_type)} &middot; ${completed}/${total} capitulos${(() => { const e = fmtEta(etaSeconds(item.id, completed, total, item.status)); return e ? ` &middot; ETA ${e}` : ""; })()}</div>
+                ${liveBits ? `<div class="meta">${liveBits}${activeChild && fileName(activeChild) ? ` &middot; ${escapeHtml(fileName(activeChild))}` : ""}</div>` : ""}
                 ${item.error ? `<div class="meta">${escapeHtml(item.error)}</div>` : ""}
               </div>
               <div class="actions">
