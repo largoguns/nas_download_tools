@@ -13,13 +13,18 @@ from bs4 import BeautifulSoup
 
 from extractors.registry import LANGUAGES, resolve_streams
 from .base import (
+    MEDIA_MOVIE,
+    MEDIA_SERIES,
+    MEDIA_SPECIAL,
     AnimeItem,
     AnimePage,
     BaseAnimeSource,
     EpisodeItem,
     EpisodePage,
+    MediaClassification,
     SourceError,
     VideoStream,
+    classify_title,
 )
 
 
@@ -106,6 +111,32 @@ class JkanimeSource(BaseAnimeSource):
         # popular/recientes y pagina con &p=N.
         document = self.html(f"/directorio?genero={quote(slug)}&p={max(1, page)}")
         return self._parse_directory_page(document, page)
+
+    def classify(self, anime_title: str, anime_url: str) -> MediaClassification:
+        # El campo "Tipo:" de la ficha (Serie / OVA / Especial / Pelicula) es la
+        # senal fiable del tipo; la temporada y el nombre base salen del titulo.
+        tipo = self._detail_tipo(anime_url)
+        override = None
+        if tipo:
+            if tipo.startswith("pel") or "movie" in tipo:
+                override = MEDIA_MOVIE
+            elif any(k in tipo for k in ("ova", "oav", "oad", "especial", "special")):
+                override = MEDIA_SPECIAL
+            elif any(k in tipo for k in ("serie", "tv", "anime", "ona")):
+                override = MEDIA_SERIES
+        return classify_title(anime_title, kind_override=override)
+
+    def _detail_tipo(self, anime_url: str) -> str:
+        try:
+            document = self.html(anime_url)
+        except Exception:
+            return ""
+        for element in document.find_all(["li", "div", "span", "p"]):
+            text = element.get_text(" ", strip=True)
+            if text.lower().startswith("tipo") and len(text) < 40:
+                match = re.search(r"tipo\s*:?\s*(.+)", text, re.IGNORECASE)
+                return match.group(1).strip().lower() if match else ""
+        return ""
 
     def details(self, anime_url: str) -> AnimeItem:
         document = self.html(anime_url)

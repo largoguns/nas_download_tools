@@ -18,10 +18,13 @@ from flask import Flask, jsonify, render_template, request
 
 import jellyfin
 from anime_sources.base import (
+    MEDIA_MOVIE,
+    MEDIA_SPECIAL,
     DownloadsDisabled,
     EpisodeItem,
     SourceError,
     StreamNotFound,
+    classify_title,
     sanitize_path_segment,
 )
 from anime_sources.registry import load_sources
@@ -30,17 +33,51 @@ from anime_sources.registry import load_sources
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", BASE_DIR / "data" / "anime_queue.db"))
 DOWNLOAD_DIR = Path(os.environ.get("DOWNLOAD_DIR", BASE_DIR / "downloads"))
+# Las peliculas van a su propia raiz (biblioteca de peliculas de Jellyfin).
+MOVIES_DIR = Path(os.environ.get("MOVIES_DIR", BASE_DIR / "downloads-movies"))
 
 
-def download_root_for(source) -> Path:
-    """Directorio de descargas de una fuente.
+def _provider_dir(item: dict[str, Any], source) -> str:
+    source_id = getattr(source, "id", "") or item.get("source_id") or "source"
+    return sanitize_path_segment(source_id)
 
-    Todo cuelga de ``DOWNLOAD_DIR`` pero dentro de un subdirectorio con el id
-    del scraper (``DOWNLOAD_DIR/<source_id>/<anime>/<capitulo>``), de modo que
-    cada fuente queda separada sin necesidad de volumenes distintos.
+
+def _episode_number_for(item: dict[str, Any]) -> int:
+    number = item.get("episode_number")
+    try:
+        return int(round(float(number)))
+    except (TypeError, ValueError):
+        return int(item.get("position") or 1)
+
+
+def plan_output(item: dict[str, Any], source) -> tuple[Path, str, Path]:
+    """Carpeta destino, nombre base del fichero y raiz permitida (para validar).
+
+    Organiza al estilo Jellyfin segun la clasificacion guardada en el item:
+      * pelicula  -> MOVIES_DIR/<proveedor>/<titulo>/<titulo>
+      * especial  -> DOWNLOAD_DIR/<proveedor>/<serie>/Specials/<serie> - S00Exx
+      * serie     -> DOWNLOAD_DIR/<proveedor>/<serie>/Season NN/<serie> - SNNExx
     """
-    source_id = getattr(source, "id", "") or str(source)
-    return DOWNLOAD_DIR / sanitize_path_segment(source_id)
+    provider = _provider_dir(item, source)
+    kind = item.get("media_kind") or "series"
+
+    if kind == MEDIA_MOVIE:
+        name = sanitize_path_segment(item.get("series_name") or item.get("anime_title") or "movie")
+        return MOVIES_DIR / provider / name, name, MOVIES_DIR
+
+    series = sanitize_path_segment(item.get("series_name") or item.get("anime_title") or "anime")
+    episode = _episode_number_for(item)
+    if kind == MEDIA_SPECIAL:
+        season = 0
+        season_dir = "Specials"
+    else:
+        try:
+            season = max(1, int(item.get("season") or 1))
+        except (TypeError, ValueError):
+            season = 1
+        season_dir = f"Season {season:02d}"
+    stem = f"{series} - S{season:02d}E{episode:02d}"
+    return DOWNLOAD_DIR / provider / series / season_dir, stem, DOWNLOAD_DIR
 
 
 PORT = int(os.environ.get("PORT", "8090"))
@@ -92,6 +129,7 @@ def get_connection() -> sqlite3.Connection:
 
 def init_db() -> None:
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    MOVIES_DIR.mkdir(parents=True, exist_ok=True)
     with get_connection() as connection:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.execute(
@@ -155,6 +193,19 @@ def init_db() -> None:
         if "download_server" not in columns:
             connection.execute(
                 "ALTER TABLE download_items ADD COLUMN download_server TEXT",
+            )
+        # Clasificacion de medios (organizacion estilo Jellyfin) por item.
+        if "media_kind" not in columns:
+            connection.execute(
+                "ALTER TABLE download_items ADD COLUMN media_kind TEXT NOT NULL DEFAULT 'series'",
+            )
+        if "season" not in columns:
+            connection.execute(
+                "ALTER TABLE download_items ADD COLUMN season INTEGER NOT NULL DEFAULT 1",
+            )
+        if "series_name" not in columns:
+            connection.execute(
+                "ALTER TABLE download_items ADD COLUMN series_name TEXT",
             )
         connection.execute(
             """
@@ -287,6 +338,7 @@ def create_download_job(
         raise SourceError("No hay episodios para encolar.")
 
     episodes = sorted_episodes(episodes)
+    classification = classify_anime(source_id, anime_title, anime_url)
     now = utc_now()
     with get_connection() as connection:
         cursor = connection.execute(
@@ -305,9 +357,10 @@ def create_download_job(
                 """
                 INSERT INTO download_items (
                     job_id, source_id, position, anime_title, episode_title,
-                    episode_url, episode_number, status, created_at, updated_at
+                    episode_url, episode_number, status, created_at, updated_at,
+                    media_kind, season, series_name
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?)
                 """,
                 (
                     job_id,
@@ -319,9 +372,28 @@ def create_download_job(
                     episode.number,
                     now,
                     now,
+                    classification.kind,
+                    classification.season,
+                    classification.series_name,
                 ),
             )
     return job_id
+
+
+def classify_anime(source_id: str, anime_title: str, anime_url: str):
+    """Clasifica el anime (temporada/especial/pelicula) una vez por job.
+
+    Usa la fuente si esta disponible (jkanime lee el campo "Tipo" de la ficha);
+    ante cualquier fallo cae a la deteccion por titulo para no bloquear el
+    encolado.
+    """
+    source = SOURCES.get(source_id)
+    try:
+        if source is not None:
+            return source.classify(anime_title, anime_url)
+    except Exception as exc:
+        logging.warning("No se pudo clasificar '%s' (%s); se usa el titulo", anime_title, exc)
+    return classify_title(anime_title)
 
 
 def list_download_jobs(limit: int = 100) -> list[dict[str, Any]]:
@@ -545,21 +617,19 @@ def order_streams(streams: list) -> list:
 def find_existing_download(item: dict[str, Any], source) -> Path | None:
     """Devuelve el fichero ya descargado para este episodio, si existe.
 
-    Busca en ``<download_dir de la fuente>/{anime}/`` un fichero con el mismo
-    nombre base que el episodio (cualquier extension, ignorando ``.part`` y
-    ficheros vacios). Asi un capitulo ya bajado no se vuelve a descargar salvo
-    que se fuerce.
+    Busca en la carpeta destino (estilo Jellyfin) un fichero con el mismo nombre
+    base que el episodio (cualquier extension, ignorando ``.part`` y ficheros
+    vacios). Asi un capitulo ya bajado no se vuelve a descargar salvo que se
+    fuerce.
     """
-    anime_dir = sanitize_path_segment(item.get("anime_title") or "anime")
-    episode = sanitize_path_segment(item.get("episode_title") or "episode")
-    folder = download_root_for(source) / anime_dir
+    folder, stem, _ = plan_output(item, source)
     if not folder.is_dir():
         return None
     for candidate in folder.iterdir():
         if (
             candidate.is_file()
             and candidate.suffix.lower() != ".part"
-            and candidate.stem == episode
+            and candidate.stem == stem
         ):
             try:
                 if candidate.stat().st_size > 0:
@@ -661,16 +731,9 @@ def download_stream_to_disk(item: dict[str, Any], source, stream) -> None:
     Limpia su fichero parcial ante cualquier error para que el siguiente
     servidor (o un reintento) empiece limpio.
     """
-    download_root = download_root_for(source)
-    output_path = ensure_within_download_dir(
-        source.build_filename(
-            item["anime_title"],
-            item["episode_title"],
-            stream,
-            download_root,
-        ),
-        download_root,
-    )
+    folder, stem, root = plan_output(item, source)
+    ext = sanitize_path_segment(stream.extension or "mp4").lstrip(".") or "mp4"
+    output_path = ensure_within_download_dir(folder / f"{stem}.{ext}", root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = output_path.with_suffix(output_path.suffix + ".part")
 

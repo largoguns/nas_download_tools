@@ -10,6 +10,7 @@ services:
       PORT: 8090
       DATABASE_PATH: /data/anime_queue.db
       DOWNLOAD_DIR: /downloads
+      MOVIES_DIR: /movies
       APP_BASE_PATH: ${APP_BASE_PATH:-/anime}
       FFMPEG_BIN: ${FFMPEG_BIN:-ffmpeg}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -32,8 +33,10 @@ services:
       JELLYFIN_REFRESH_DEBOUNCE_SECONDS: ${JELLYFIN_REFRESH_DEBOUNCE_SECONDS:-30}
     volumes:
       - ${ANIME_DATA_DIR:-./data}:/data
-      # Dentro se crea un subdirectorio por scraper: /downloads/<source_id>/<anime>/...
+      # Dentro se crea un subdirectorio por scraper: /downloads/<source_id>/<serie>/Season NN/...
       - ${ANIME_DOWNLOAD_DIR:-./downloads}:/downloads
+      # Peliculas: biblioteca aparte de Jellyfin -> /movies/<source_id>/<peli>/<peli>.mp4
+      - ${ANIME_MOVIES_DIR:-./downloads-movies}:/movies
     restart: unless-stopped
     networks:
       - proxy

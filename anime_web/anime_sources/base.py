@@ -116,6 +116,101 @@ class EpisodePage:
         }
 
 
+# --------------------------------------------------------------------------- #
+# Clasificacion de medios (para organizar las descargas al estilo Jellyfin).
+#
+# Los scrapers modelan cada temporada/OVA/pelicula como un "anime" independiente
+# con la pista en el titulo ("... 2nd Season", "... OVA", "... Movie"). Aqui
+# derivamos, solo a partir del titulo, si es una temporada (y cual), un especial
+# (OVA/ONA -> Specials, S00) o una pelicula, y el "nombre base" de la serie con
+# los marcadores quitados para que Jellyfin agrupe las temporadas y OVAs de un
+# mismo anime en la misma carpeta.
+# --------------------------------------------------------------------------- #
+
+MEDIA_SERIES = "series"
+MEDIA_SPECIAL = "special"
+MEDIA_MOVIE = "movie"
+
+
+@dataclass(frozen=True)
+class MediaClassification:
+    kind: str = MEDIA_SERIES  # series | special | movie
+    season: int = 1           # 1.. para series; 0 para especiales; ignorado en peliculas
+    series_name: str = ""     # carpeta/base name (marcadores quitados salvo en peliculas)
+
+
+_MOVIE_MARKER = re.compile(r"\b(?:the\s+movie|movie|gekijou?ban|pel[ií]cula)\b", re.IGNORECASE)
+_SPECIAL_MARKER = re.compile(
+    r"\b(?:ova|ovas|oad|oav|special|specials|especial|picture\s+drama)\b",
+    re.IGNORECASE,
+)
+_ORDINAL_SEASON = re.compile(r"\b(\d+)\s*(?:st|nd|rd|th)\s+season\b", re.IGNORECASE)
+_SEASON_N = re.compile(r"\bseason\s+(\d+)\b", re.IGNORECASE)
+_TEMPORADA_N = re.compile(r"\btemporada\s+(\d+)\b", re.IGNORECASE)
+_TRAILING_ROMAN = re.compile(r"\s+(ii|iii|iv|v|vi|vii|viii)\s*$", re.IGNORECASE)
+_TRAILING_NUMBER = re.compile(r"\s+(\d{1,2})\s*$")
+_ROMAN_VALUES = {"ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8}
+
+
+def _detect_media_kind(title: str) -> str:
+    if _MOVIE_MARKER.search(title):
+        return MEDIA_MOVIE
+    if _SPECIAL_MARKER.search(title):
+        return MEDIA_SPECIAL
+    return MEDIA_SERIES
+
+
+def _detect_season(title: str) -> int:
+    for pattern in (_ORDINAL_SEASON, _SEASON_N, _TEMPORADA_N):
+        match = pattern.search(title)
+        if match:
+            return max(1, int(match.group(1)))
+    match = _TRAILING_ROMAN.search(title)
+    if match:
+        return _ROMAN_VALUES[match.group(1).lower()]
+    match = _TRAILING_NUMBER.search(title)
+    if match:
+        number = int(match.group(1))
+        if number >= 2:  # un "1" final no suele indicar temporada
+            return number
+    return 1
+
+
+def _strip_series_markers(title: str) -> str:
+    text = title
+    for pattern in (
+        _MOVIE_MARKER,
+        _SPECIAL_MARKER,
+        _ORDINAL_SEASON,
+        _SEASON_N,
+        _TEMPORADA_N,
+        _TRAILING_ROMAN,
+        _TRAILING_NUMBER,
+    ):
+        text = pattern.sub(" ", text)
+    # Limpia separadores colgantes (":", "-", guiones) y espacios sobrantes.
+    text = re.sub(r"\s{2,}", " ", text).strip()
+    text = re.sub(r"[\s:\-–—]+$", "", text).strip()
+    return text or title.strip()
+
+
+def classify_title(title: str, kind_override: str | None = None) -> MediaClassification:
+    """Clasifica un titulo de anime en serie/especial/pelicula.
+
+    ``kind_override`` permite a un scraper imponer el tipo cuando conoce un dato
+    mas fiable (p. ej. el campo "Tipo" de la ficha) y dejar que aqui solo se
+    calcule la temporada y el nombre base.
+    """
+    title = (title or "").strip()
+    kind = kind_override or _detect_media_kind(title)
+    if kind == MEDIA_MOVIE:
+        # Las peliculas son independientes en Jellyfin: se conserva el titulo
+        # completo como nombre de carpeta y de fichero.
+        return MediaClassification(kind=kind, season=0, series_name=title or "movie")
+    season = 0 if kind == MEDIA_SPECIAL else _detect_season(title)
+    return MediaClassification(kind=kind, season=season, series_name=_strip_series_markers(title))
+
+
 class BaseAnimeSource(ABC):
     """Common contract for every source plugin included in the app.
 
@@ -243,6 +338,14 @@ class BaseAnimeSource(ABC):
 
     def by_genre(self, genre: str, page: int = 1) -> AnimePage:
         raise SourceError(f"{self.name} does not implement genre listings")
+
+    def classify(self, anime_title: str, anime_url: str) -> MediaClassification:
+        """Determina temporada/especial/pelicula y el nombre base de la serie.
+
+        Por defecto se deduce solo del titulo. Las fuentes con un dato de tipo
+        mas fiable (p. ej. el campo "Tipo" de la ficha) deberian sobreescribirlo.
+        """
+        return classify_title(anime_title)
 
     @abstractmethod
     def details(self, anime_url: str) -> AnimeItem:
