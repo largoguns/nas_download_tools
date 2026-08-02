@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import tempfile
@@ -116,6 +117,11 @@ PORT = int(os.environ.get("PORT", "8090"))
 WORKER_SLEEP_SECONDS = max(1, int(os.environ.get("WORKER_SLEEP_SECONDS", "3")))
 DOWNLOAD_CONCURRENCY = max(1, int(os.environ.get("DOWNLOAD_CONCURRENCY", "1")))
 DOWNLOAD_CHUNK_SIZE = max(8192, int(os.environ.get("DOWNLOAD_CHUNK_SIZE", "1048576")))
+# Descarga multi-conexion con aria2 para streams HTTP directos. Reparte el
+# fichero en N conexiones paralelas (esquiva el techo de un solo flujo TCP).
+ARIA2_ENABLED = os.environ.get("ARIA2_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on", "si"}
+ARIA2_BIN = os.environ.get("ARIA2_BIN", "aria2c")
+ARIA2_CONNECTIONS = max(1, min(16, int(os.environ.get("ARIA2_CONNECTIONS", "16"))))
 PREFERRED_QUALITY = os.environ.get("PREFERRED_QUALITY", "").strip()
 REQUEST_TIMEOUT_SECONDS = max(5, int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "30")))
 DOWNLOAD_MAX_RETRIES = max(0, int(os.environ.get("DOWNLOAD_MAX_RETRIES", "5")))
@@ -792,7 +798,14 @@ def download_stream_to_disk(item: dict[str, Any], source, stream) -> None:
             download_hls_stream(item, stream, output_path, temp_path)
             return
 
-        bytes_downloaded = download_direct_stream(item, stream, output_path, temp_path)
+        # Descarga multi-conexion (aria2) para streams HTTP directos: reparte el
+        # fichero en varias conexiones paralelas, lo que multiplica la velocidad
+        # en enlaces donde un solo flujo se queda corto (p. ej. hosts lejanos con
+        # perdida). Si aria2 no esta disponible, se usa la descarga por streaming.
+        if aria2_available():
+            bytes_downloaded = download_with_aria2(item, stream, output_path, temp_path)
+        else:
+            bytes_downloaded = download_direct_stream(item, stream, output_path, temp_path)
 
         temp_path.replace(output_path)
         update_item(
@@ -821,6 +834,107 @@ RETRYABLE_NETWORK_ERRORS = (
     requests.exceptions.Timeout,
     requests.exceptions.ChunkedEncodingError,
 )
+
+_ARIA2_RESOLVED: str | None = None
+
+
+def aria2_available() -> bool:
+    """True si aria2 esta habilitado y el binario existe (se cachea)."""
+    global _ARIA2_RESOLVED
+    if not ARIA2_ENABLED:
+        return False
+    if _ARIA2_RESOLVED is None:
+        _ARIA2_RESOLVED = shutil.which(ARIA2_BIN) or ""
+        if not _ARIA2_RESOLVED:
+            logging.warning("aria2 no encontrado (%s); se usara descarga por streaming", ARIA2_BIN)
+    return bool(_ARIA2_RESOLVED)
+
+
+def download_with_aria2(item: dict[str, Any], stream, output_path: Path, temp_path: Path) -> int:
+    """Descarga un stream HTTP directo con aria2 usando N conexiones paralelas.
+
+    El progreso se toma de los bloques realmente escritos en disco
+    (``st_blocks``), fiable aunque aria2 escriba segmentos en distinto offset.
+    Respeta pausa/cancelacion terminando el proceso.
+    """
+    # Total (para la barra de progreso): un HEAD barato; si falla, lo sabra aria2.
+    total = int(stream.size_bytes or 0)
+    try:
+        head = requests.head(
+            stream.url,
+            headers=dict(stream.headers),
+            timeout=15,
+            allow_redirects=True,
+        )
+        total = int(head.headers.get("content-length") or total or 0)
+    except Exception:
+        pass
+    if total:
+        update_item(item["id"], total_bytes=total)
+
+    control_file = temp_path.with_name(temp_path.name + ".aria2")
+    command = [
+        _ARIA2_RESOLVED or ARIA2_BIN,
+        f"--max-connection-per-server={ARIA2_CONNECTIONS}",
+        f"--split={ARIA2_CONNECTIONS}",
+        "--min-split-size=1M",
+        "--continue=true",
+        "--file-allocation=none",
+        "--allow-overwrite=true",
+        "--auto-file-renaming=false",
+        "--summary-interval=0",
+        "--show-console-readout=false",
+        "--console-log-level=error",
+        f"--max-tries={max(1, DOWNLOAD_MAX_RETRIES)}",
+        "--retry-wait=2",
+        "--dir", str(temp_path.parent),
+        "--out", temp_path.name,
+    ]
+    for key, value in (stream.headers or {}).items():
+        command.append(f"--header={key}: {value}")
+    command.append(stream.url)
+
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    last_update = 0.0
+    try:
+        while True:
+            returncode = process.poll()
+            now = time.monotonic()
+            if now - last_update > 1:
+                try:
+                    stat = temp_path.stat()
+                    # st_blocks cuenta bloques de 512 B realmente escritos (sparse-aware).
+                    downloaded = stat.st_blocks * 512
+                    update_item(item["id"], bytes_downloaded=min(downloaded, total) if total else downloaded)
+                except OSError:
+                    pass
+                last_update = now
+            try:
+                check_control_state(item["id"])
+            except (PausedDownload, CanceledDownload):
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                raise
+            if returncode is not None:
+                break
+            time.sleep(0.5)
+
+        output = process.stdout.read() if process.stdout else ""
+        if process.returncode != 0:
+            raise SourceError(f"aria2c fallo (codigo {process.returncode}): {output.strip()[-300:]}")
+
+        size = temp_path.stat().st_size
+        update_item(item["id"], bytes_downloaded=size, total_bytes=total or size)
+        return size
+    finally:
+        if control_file.exists():
+            try:
+                control_file.unlink()
+            except OSError:
+                pass
 
 
 def download_direct_stream(

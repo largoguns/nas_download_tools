@@ -16,6 +16,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PREFERRED_QUALITY: ${PREFERRED_QUALITY:-}
       DOWNLOAD_CONCURRENCY: ${DOWNLOAD_CONCURRENCY:-1}
+      # Descarga multi-conexion (aria2) para streams directos: N conexiones en
+      # paralelo. Sube mucho la velocidad en enlaces donde un flujo unico se
+      # queda corto (NIC/red lentos con hosts lejanos).
+      ARIA2_ENABLED: ${ARIA2_ENABLED:-true}
+      ARIA2_CONNECTIONS: ${ARIA2_CONNECTIONS:-16}
       DOWNLOAD_MAX_RETRIES: ${DOWNLOAD_MAX_RETRIES:-5}
       DOWNLOAD_START_RETRIES: ${DOWNLOAD_START_RETRIES:-1}
       ANIME_DOWNLOAD_SERVER_PRIORITY: ${ANIME_DOWNLOAD_SERVER_PRIORITY:-}
