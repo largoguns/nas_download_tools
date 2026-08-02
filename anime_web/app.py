@@ -226,6 +226,11 @@ def init_db() -> None:
             connection.execute(
                 "ALTER TABLE download_items ADD COLUMN download_server TEXT",
             )
+        # URL real de origen desde la que se esta bajando (host resuelto).
+        if "download_url" not in columns:
+            connection.execute(
+                "ALTER TABLE download_items ADD COLUMN download_url TEXT",
+            )
         # Clasificacion de medios (organizacion estilo Jellyfin) por item.
         if "media_kind" not in columns:
             connection.execute(
@@ -769,11 +774,13 @@ def download_stream_to_disk(item: dict[str, Any], source, stream) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = output_path.with_suffix(output_path.suffix + ".part")
 
-    # Deja constancia del servidor y el fichero destino en cuanto arranca la
-    # descarga, para que la cola muestre de donde y que se esta bajando.
+    # Deja constancia del servidor, la URL de origen y el fichero destino en
+    # cuanto arranca la descarga, para que la cola muestre de donde y que se
+    # esta bajando.
     update_item(
         item["id"],
         download_server=stream.label or "desconocido",
+        download_url=stream.url,
         output_path=str(output_path),
     )
 

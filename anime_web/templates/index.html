@@ -1160,6 +1160,12 @@
       const p = String(item.output_path).replace(/\\/g, "/");
       return p.substring(p.lastIndexOf("/") + 1);
     }
+    function truncateMid(s, max = 64) {
+      s = String(s || "");
+      if (s.length <= max) return s;
+      const keep = Math.floor((max - 1) / 2);
+      return `${s.slice(0, keep)}…${s.slice(-keep)}`;
+    }
 
     function updateQueueBadge(downloads) {
       const active = downloads.filter((job) => ["DOWNLOADING", "PENDING"].includes(job.status)).length;
@@ -1233,6 +1239,11 @@
         lines.push(b || escapeHtml(child.episode_url || ""));
       }
       if (child.download_server) lines.push(`Servidor: ${escapeHtml(child.download_server)}`);
+      if (child.download_url) {
+        lines.push(
+          `Origen: <a href="${escapeAttr(child.download_url)}" target="_blank" rel="noopener" title="${escapeAttr(child.download_url)}">${escapeHtml(truncateMid(child.download_url, 72))}</a>`,
+        );
+      }
       if (child.error) lines.push(escapeHtml(child.error));
       return lines.map((l) => `<div class="meta">${l}</div>`).join("");
     }
