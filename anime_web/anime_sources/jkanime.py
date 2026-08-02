@@ -6,6 +6,7 @@ import json
 import os
 import re
 import time
+from dataclasses import replace
 from datetime import datetime
 from urllib.parse import quote
 
@@ -68,8 +69,11 @@ class JkanimeSource(BaseAnimeSource):
             float_env("ANIME_JKANIME_EPISODE_PAUSE_SECONDS", 0.25),
         )
         # Descargas directas via el CDN propio de jkanime (c1.jkplayers.com/d/{slug}/).
-        # Es mas simple y fiable que resolver cada host con extractores; estos
-        # quedan como fallback cuando no hay enlaces directos disponibles.
+        # Es fiable pero suele ir MUY lento. Por defecto preferimos los hosts HD
+        # externos (Mediafire, Streamwish, VOE, ...), que resuelven a enlaces
+        # directos mucho mas rapidos; el CDN oficial queda como ultimo recurso.
+        # El orden entre hosts se controla con ANIME_DOWNLOAD_SERVER_PRIORITY.
+        self.prefer_external_hosts = bool_env("ANIME_JKANIME_PREFER_HD_HOSTS", True)
         self.direct_download_enabled = bool_env("ANIME_JKANIME_DIRECT_DOWNLOAD", True)
         self.extractor_fallback_enabled = bool_env("ANIME_JKANIME_EXTRACTOR_FALLBACK", True)
         # jkanime corta conexiones de forma transitoria (RemoteDisconnected/429).
@@ -211,14 +215,22 @@ class JkanimeSource(BaseAnimeSource):
     def get_video_streams(self, episode_url: str) -> list[VideoStream]:
         """Streams primarios para descargar un episodio de JKAnime.
 
-        Por defecto usa el endpoint de descarga oficial de la web
-        (``GET /ajax/download_episode/{id}``), que devuelve la URL real del
-        fichero. Es el mismo mecanismo que el boton "Descargar" del sitio.
+        Con ``prefer_external_hosts`` (por defecto) se resuelven primero los
+        hosts HD externos del listado ``var servers`` (Mediafire, Streamwish,
+        VOE, ...), que la app ordena por ``ANIME_DOWNLOAD_SERVER_PRIORITY`` y
+        prueba en ese orden. Solo si ninguno resuelve se cae al CDN oficial
+        (``GET /ajax/download_episode/{id}``), fiable pero lento.
 
-        Si la descarga directa esta desactivada se usan directamente los
-        extractores. Los extractores tambien actuan como fallback (ver
-        ``get_video_streams_fallback``) cuando la descarga directa falla.
+        Con la preferencia desactivada se mantiene el comportamiento anterior:
+        CDN oficial primero y extractores como fallback.
         """
+        if self.prefer_external_hosts:
+            external = self._extractor_streams(self._fetch_servers(episode_url))
+            if external:
+                return external
+            # Ningun host externo resolvio: el fallback usara el CDN oficial.
+            return []
+
         if self.direct_download_enabled:
             direct = self._ajax_download_streams(episode_url)
             if direct:
@@ -230,8 +242,14 @@ class JkanimeSource(BaseAnimeSource):
         return self._extractor_streams(self._fetch_servers(episode_url))
 
     def get_video_streams_fallback(self, episode_url: str) -> list[VideoStream]:
-        # Solo tiene sentido si la directa fue la via primaria; si la directa
-        # estaba desactivada, los extractores ya fueron los primarios.
+        if self.prefer_external_hosts:
+            # Ultimo recurso cuando los hosts externos no resolvieron: el CDN
+            # oficial de jkanime (lento pero fiable).
+            if self.direct_download_enabled:
+                return self._ajax_download_streams(episode_url)
+            return []
+
+        # Comportamiento anterior: los extractores como fallback del CDN.
         if not (self.direct_download_enabled and self.extractor_fallback_enabled):
             return []
         return self._extractor_streams(self._fetch_servers(episode_url))
@@ -335,14 +353,21 @@ class JkanimeSource(BaseAnimeSource):
                 continue
 
             lang = LANGUAGES.get(server.get("lang"), "")
+            name = (server.get("server") or "").strip()
             try:
-                all_streams.extend(
-                    resolve_streams(server_url, self.session, lang=lang, headers=dict(self.session.headers)),
+                resolved = resolve_streams(
+                    server_url, self.session, lang=lang, headers=dict(self.session.headers),
                 )
             except Exception:
                 # Un host puede fallar (caido, cambio de formato); se ignora y se
                 # continua con el resto de servidores, como hace el original.
                 continue
+            # Anota el nombre del servidor en la etiqueta para que la app pueda
+            # ordenarlos por ANIME_DOWNLOAD_SERVER_PRIORITY.
+            for stream in resolved:
+                if name and name.lower() not in (stream.label or "").lower():
+                    stream = replace(stream, label=f"{name} {stream.label}".strip())
+                all_streams.append(stream)
         return all_streams
 
     def _episode_context(self, anime_url: str) -> dict[str, str]:
