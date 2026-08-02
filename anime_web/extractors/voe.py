@@ -46,7 +46,7 @@ def get_streams(
             response.raise_for_status()
             document = BeautifulSoup(response.text, "html.parser")
 
-    json_script = document.select_one("script[type=application/json]")
+    json_script = document.select_one('script[type="application/json"]')
     if not json_script or not json_script.string:
         return []
 

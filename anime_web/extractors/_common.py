@@ -116,7 +116,7 @@ class _SubstringExtractor:
 _WORD_RE = re.compile(r"[0-9A-Za-z]+")
 
 
-def _parse_radix62(token: str) -> int:
+def _parse_radix(token: str, base: int = 62) -> int:
     result = 0
     for char in token:
         code = ord(char)
@@ -126,7 +126,7 @@ def _parse_radix62(token: str) -> int:
             digit = code - (ord("a") - 10)
         else:
             digit = code - (ord("A") - 36)
-        result = result * 62 + digit
+        result = result * base + digit
     return result
 
 
@@ -137,7 +137,9 @@ def unpack(script: str, left: str | None = None, right: str | None = None) -> st
     bloque empaquetado.
     """
     parser = _SubstringExtractor(script)
-    packed = parser.substring_between("}('", ".split('|'),0,{}))").replace("\\'", '"')
+    # El sufijo tras .split('|') varia entre variantes del packer (",0,{}))" o
+    # solo ")))"); cortamos en ".split('|')" para tolerar ambos.
+    packed = parser.substring_between("}('", ".split('|')").replace("\\'", '"')
     if not packed:
         return ""
 
@@ -150,12 +152,18 @@ def unpack(script: str, left: str | None = None, right: str | None = None) -> st
     if not data:
         return ""
 
+    # La radix (base de los tokens) es el 2do argumento del packer: '<payload>',
+    # <radix>, <count>, '<dict>'. Algunas variantes usan base 36 y otras 62; si
+    # no se detecta, se asume 62 (comportamiento previo).
+    radix_match = re.search(r"',\s*(\d+)\s*,\s*\d+\s*,\s*'", packed)
+    radix = int(radix_match.group(1)) if radix_match else 62
+
     dictionary = inner.substring_between("'", "'").split("|")
     size = len(dictionary)
 
     def replace(match: re.Match[str]) -> str:
         key = match.group(0)
-        index = _parse_radix62(key)
+        index = _parse_radix(key, radix)
         if index >= size:
             return key
         return dictionary[index] or key

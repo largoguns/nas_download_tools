@@ -616,7 +616,10 @@ DOWNLOAD_SERVER_PRIORITY = [
     name.strip().lower()
     for name in (
         os.environ.get("ANIME_DOWNLOAD_SERVER_PRIORITY", "").strip()
-        or "mediafire,streamtape,okru,mp4upload,voe,filemoon,streamwish,mixdrop,doodstream"
+        # VOE y StreamWish son HLS (descarga por segmentos): esquivan el limite
+        # de un solo flujo a alta latencia y suelen ir mas rapidos que el MP4
+        # unico de Mediafire, que queda como alternativa fiable.
+        or "voe,streamwish,mediafire,streamtape,okru,mp4upload,filemoon,mixdrop,doodstream"
     ).split(",")
     if name.strip()
 ]
