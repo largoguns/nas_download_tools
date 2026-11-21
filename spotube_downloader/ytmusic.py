@@ -164,15 +164,79 @@ def path_part(value, fallback):
     return value[:180] or fallback
 
 
-def fill_track_metadata(info, album_state=None):
+class AlbumLookup:
+    """Datos reales del album desde YouTube Music (via ytmusicapi).
+
+    YouTube no da el artista del album en los videos, y adivinarlo pista a pista
+    hace que Navidrome parta un disco en varios. La pagina del album de YouTube
+    Music si lo tiene (p. ej. "Various Artists", "Descendants 3 – Cast"), junto al
+    titulo completo, el ano y el numero de pista. Se usa igual para un album
+    entero que para una cancion suelta, asi ambas acaban en el mismo disco.
+    Cualquier fallo devuelve ``None`` y se cae a las heuristicas.
+    """
+
+    def __init__(self):
+        self._ytm = None
+        self._albums = {}  # browse_id -> info del album
+        self._video_album = {}  # video_id -> browse_id
+
+    def _client(self):
+        if self._ytm is None:
+            from ytmusicapi import YTMusic
+
+            self._ytm = YTMusic()
+        return self._ytm
+
+    def _album(self, browse_id):
+        if browse_id not in self._albums:
+            data = self._client().get_album(browse_id)
+            artists = [a.get("name") for a in data.get("artists") or [] if a.get("name")]
+            numbers = {}
+            for index, track in enumerate(data.get("tracks") or [], start=1):
+                if track.get("videoId"):
+                    numbers[track["videoId"]] = track.get("trackNumber") or index
+            self._albums[browse_id] = {
+                "title": data.get("title"),
+                "artist": artists[0] if artists else None,
+                "year": data.get("year"),
+                "track_numbers": numbers,
+            }
+        return self._albums[browse_id]
+
+    def preload_playlist(self, playlist_id):
+        """Album de una playlist OLAK5uy_ (una sola consulta para todo el disco)."""
+        try:
+            browse_id = self._client().get_album_browse_id(playlist_id)
+            album = self._album(browse_id) if browse_id else None
+        except Exception as exc:
+            print(f"WARNING: no se pudo leer el album de YouTube Music: {exc}", flush=True)
+            return None
+        if album:
+            for video_id in album["track_numbers"]:
+                self._video_album[video_id] = browse_id
+        return album
+
+    def for_video(self, video_id):
+        try:
+            if video_id not in self._video_album:
+                tracks = self._client().get_watch_playlist(video_id, limit=1).get("tracks") or []
+                album_ref = (tracks[0].get("album") or {}) if tracks else {}
+                self._video_album[video_id] = album_ref.get("id")
+            browse_id = self._video_album[video_id]
+            return self._album(browse_id) if browse_id else None
+        except Exception as exc:
+            print(f"WARNING: no se pudo leer el album de {video_id}: {exc}", flush=True)
+            self._video_album[video_id] = None
+            return None
+
+
+def fill_track_metadata(info, album=None):
     """Rellena track/artist/album/... en el info dict de yt-dlp.
 
     Las pistas "Topic" de YouTube Music traen metadatos de musica; los videos
     musicales (VEVO, etc.) no, y entonces se deducen del titulo del video.
-
-    YouTube no expone el artista del album. En playlists de album se fija el
-    artista principal de la primera pista para todas (``album_state`` lo
-    recuerda entre pistas); si no, Navidrome partiria el album en varios.
+    ``album`` son los datos reales del album (``AlbumLookup``); con ellos el
+    artista de album, el titulo y el ano son los mismos para todas las pistas.
     """
     title = info.get("title") or ""
     track = info.get("track")
@@ -182,33 +246,34 @@ def fill_track_metadata(info, album_state=None):
         track = track or split_title or title
         artist = artist or split_artist or clean_channel_name(info.get("uploader") or info.get("channel"))
     artist = artist or "Desconocido"
+    main_artist = first_artist(artist)
+    album = album or {}
 
     playlist_id = info.get("playlist_id") or ""
     is_album_playlist = playlist_id.startswith(ALBUM_PLAYLIST_PREFIX)
-    album = info.get("album")
-    if not album and is_album_playlist:
-        album = re.sub(r"^(?:Album|EP|Single)\s+-\s+", "", info.get("playlist_title") or "")
-    album = album or track  # sencillo suelto: album = titulo, como hace spotdl
+    album_title = album.get("title") or info.get("album")
+    if not album_title and is_album_playlist:
+        album_title = re.sub(r"^(?:Album|EP|Single)\s+-\s+", "", info.get("playlist_title") or "")
+    album_title = album_title or track  # sencillo suelto: album = titulo, como hace spotdl
 
-    main_artist = first_artist(artist)
-    album_artist = info.get("album_artist")
-    if not album_artist and is_album_playlist and album_state is not None:
-        album_artist = album_state.setdefault(playlist_id, main_artist)
-    album_artist = album_artist or main_artist
-    track_number = info.get("track_number")
+    album_artist = album.get("artist") or info.get("album_artist") or main_artist
+    track_number = (album.get("track_numbers") or {}).get(info.get("id")) or info.get("track_number")
     if not track_number and is_album_playlist:
         track_number = info.get("playlist_index")
 
     info["description"] = None  # la descripcion del video no es una etiqueta util
     info["track"] = track
     info["artist"] = artist
-    info["album"] = album
+    info["album"] = album_title
     info["album_artist"] = album_artist
     if track_number:
         info["track_number"] = track_number
-    # Campos propios para la plantilla de salida: {artista}/{album}/{titulo}.mp3
-    info["ytm_dir_artist"] = path_part(album_artist if is_album_playlist else main_artist, "Desconocido")
-    info["ytm_dir_album"] = path_part(album, "Singles")
+    year = album.get("year") or info.get("release_year")
+    if year:
+        info["meta_date"] = str(year)  # ano de publicacion, no el de subida a YouTube
+    # Campos propios para la plantilla de salida: {artista album}/{album}/{titulo}.mp3
+    info["ytm_dir_artist"] = path_part(album_artist, "Desconocido")
+    info["ytm_dir_album"] = path_part(album_title, "Singles")
     info["ytm_file_title"] = path_part(track, info.get("id") or "cancion")
     return info
 
@@ -226,11 +291,16 @@ def run(args):
     import yt_dlp
     from yt_dlp.postprocessor.common import PostProcessor
 
-    album_state = {}
+    albums = AlbumLookup()
+    kind, item_id = parse_url(args.url)
+    playlist_album = None
+    if kind == "playlist" and item_id.startswith(ALBUM_PLAYLIST_PREFIX):
+        playlist_album = albums.preload_playlist(item_id)
 
     class MusicMetadataPP(PostProcessor):
         def run(self, info):
-            fill_track_metadata(info, album_state)
+            album = playlist_album or albums.for_video(info.get("id"))
+            fill_track_metadata(info, album)
             emit(
                 "item",
                 index=info.get("playlist_index") or 1,

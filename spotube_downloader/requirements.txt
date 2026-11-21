@@ -3,3 +3,4 @@ spotdl>=4.2,<5.0
 # YouTube cambia a menudo; un yt-dlp viejo da "AudioProviderError: YT-DLP download error".
 # Subir este minimo (o reconstruir con --no-cache) cuando vuelva a fallar.
 yt-dlp>=2026.10.26
+ytmusicapi>=1.8

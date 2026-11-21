@@ -6,7 +6,10 @@ Tambien acepta enlaces de **YouTube Music** (cancion `watch?v=...` o playlist/al
 `playlist?list=...`). Esos no pasan por spotdl: se descargan directamente con
 yt-dlp (`ytmusic.py`), sin emparejar con Spotify. Los metadatos salen de YouTube
 Music; en videos musicales sin metadatos se deducen del titulo ("Artista - Titulo").
-Las playlists de album (`OLAK5uy_...`) se guardan como un unico album.
+El artista de album, el titulo completo, el ano y el numero de pista se leen de la
+pagina del album en YouTube Music (`ytmusicapi`), tanto al bajar un album entero
+como una cancion suelta: asi todas las pistas de un disco caen en la misma carpeta
+y Navidrome no lo parte en varios (p. ej. bandas sonoras con "Various Artists").
 
 ## Docker
 
