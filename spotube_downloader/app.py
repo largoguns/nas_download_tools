@@ -146,6 +146,8 @@ SPOTDL_ERROR_PATTERNS = (
     "download-deno",
     "httperror",
     "install deno",
+    "lookuperror",
+    "no results found",
     "not a bot",
     "read timed out",
     "readtimeout",
@@ -1677,10 +1679,61 @@ def get_spotdl_incomplete_reason(stats):
     if expected_count is not None and success_count < expected_count:
         return f"spotdl solo completo {success_count}/{expected_count} canciones."
 
+    # Las busquedas de texto y las URLs de cancion no imprimen "Found N songs":
+    # spotdl sale con codigo 0 aunque no encuentre o no descargue nada.
+    if expected_count is None and success_count == 0:
+        return "spotdl no descargo ninguna cancion."
+
     if stats.get("had_transient_error"):
         return "spotdl devolvio codigo 0, pero registro un error de conexion."
 
     return None
+
+
+def is_lookup_failure(output):
+    return "no results found for song" in (output or "").lower()
+
+
+def is_single_song_job(url):
+    value = (url or "").strip().lower()
+    if not value.startswith(("http://", "https://", "spotify:")):
+        return True  # busqueda de texto "artista - titulo"
+    return get_spotify_item_type(url) == "track"
+
+
+def use_unfiltered_search(url, previous_error):
+    """El emparejado de spotdl descarta resultados validos cuando YouTube Music
+    acredita mas artistas que la fuente (bandas sonoras, colaboraciones). Si el
+    intento anterior de una cancion suelta acabo en "No results found", se
+    reintenta con --dont-filter-results, que toma el mejor resultado de YT Music.
+
+    En busquedas de texto spotdl puede resolver la consulta a otra cancion
+    distinta; solo se quita el filtro si la cancion no encontrada coincide con
+    lo pedido, para no descargar algo que no tiene nada que ver."""
+    if not (is_single_song_job(url) and is_lookup_failure(previous_error)):
+        return False
+    if get_spotify_item_type(url) == "track":
+        return True  # los metadatos vienen de Spotify: la cancion es la correcta
+    return lookup_target_matches_query(url, previous_error)
+
+
+def normalize_match_text(value):
+    return re.sub(r"[^0-9a-z]+", "", (value or "").lower())
+
+
+def lookup_target_matches_query(query, error):
+    match = re.search(r"no results found for song:(.*)", error or "", re.IGNORECASE | re.DOTALL)
+    if not match:
+        return False
+    # rich parte las lineas largas: se compara sin espacios ni saltos.
+    target = normalize_match_text(match.group(1)[:300])
+    artist, _, title = query.partition(" - ")
+    if not title:
+        artist, title = "", query
+    first_artist = re.split(r",|&| feat\.? | ft\.? ", artist, flags=re.IGNORECASE)[0]
+    title_key = normalize_match_text(title)
+    artist_key = normalize_match_text(first_artist)
+    return bool(title_key) and title_key in target and artist_key in target
 
 
 def run_spotdl(job_id, url, missing_only=False, previous_error=None):
@@ -1758,15 +1811,18 @@ def run_spotdl(job_id, url, missing_only=False, previous_error=None):
     )
     if SPOTDL_YT_DLP_ARGS:
         command.extend(["--yt-dlp-args", SPOTDL_YT_DLP_ARGS])
+    if use_unfiltered_search(url, previous_error):
+        command.append("--dont-filter-results")
 
     output_tail = deque(maxlen=80)
     error_tail = deque(maxlen=24)
 
     app.logger.info(
-        "Iniciando spotdl #%s proveedores=%s query=%s",
+        "Iniciando spotdl #%s proveedores=%s query=%s%s",
         job_id,
         ",".join(audio_providers),
         query,
+        " (sin filtrar resultados)" if "--dont-filter-results" in command else "",
     )
     try:
         # Guardamos solo las ultimas lineas para no consumir RAM con playlists grandes.
@@ -1847,6 +1903,26 @@ def process_job(job):
             incomplete_reason = get_spotdl_incomplete_reason(stats)
             if incomplete_reason:
                 message = f"{incomplete_reason}\n\n{output}" if output else incomplete_reason
+                if is_lookup_failure(message) and is_single_song_job(job["url"]):
+                    if use_unfiltered_search(job["url"], job.get("error")):
+                        # Ya se probo sin filtro: reintentar no cambiara el resultado.
+                        finish_job(job["id"], "FAILED", return_code=1, error=message)
+                        app.logger.warning(
+                            "spotdl #%s: sin resultados ni sin filtrar", job["id"]
+                        )
+                        return
+                    if not use_unfiltered_search(job["url"], message):
+                        # spotdl resolvio la busqueda a otra cancion: no insistir.
+                        finish_job(job["id"], "FAILED", return_code=1, error=message)
+                        app.logger.warning(
+                            "spotdl #%s: sin resultados para la cancion pedida", job["id"]
+                        )
+                        return
+                    requeue_job(job["id"], 1, message, 0)
+                    app.logger.info(
+                        "spotdl #%s: sin resultados; reintentando sin filtrar", job["id"]
+                    )
+                    return
                 if attempt < SPOTDL_MAX_ATTEMPTS and should_retry_spotdl_failure(message):
                     retry_delay = get_retry_delay(attempt)
                     retry_message = build_retry_message(attempt, message)
