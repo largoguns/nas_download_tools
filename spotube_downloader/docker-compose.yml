@@ -14,6 +14,9 @@ services:
       SPOTDL_FORMAT: mp3
       SPOTDL_BITRATE: 192k
       SPOTDL_THREADS: ${SPOTDL_THREADS:-1}
+      # Descargas simultaneas iniciales; luego se cambian desde la interfaz.
+      DOWNLOAD_WORKERS: ${DOWNLOAD_WORKERS:-5}
+      DOWNLOAD_WORKERS_MAX: ${DOWNLOAD_WORKERS_MAX:-10}
       SPOTDL_AUDIO_PROVIDERS: ${SPOTDL_AUDIO_PROVIDERS:-youtube-music,youtube}
       SPOTDL_LOG_LEVEL: ${SPOTDL_LOG_LEVEL:-INFO}
       SPOTDL_LOG_TRACEBACKS: ${SPOTDL_LOG_TRACEBACKS:-false}

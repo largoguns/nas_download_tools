@@ -43,6 +43,9 @@
     .pager { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 700; }
     .pager .action-button:disabled { opacity: 0.45; }
     .updated-at { color: var(--muted); font-size: 0.82rem; font-weight: 600; }
+    .workers-setting { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
+    .workers-setting select { min-height: 34px; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; background: #fff; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+    .workers-setting select:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); }
 
     /* ---- Formulario ---- */
     label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
@@ -249,8 +252,8 @@
           <h2 id="search-title">Buscar en Spotify</h2>
           <form id="search-form" autocomplete="off">
             <div>
-              <label for="search-input">Título, álbum, artista o enlace de Spotify</label>
-              <input id="search-input" type="text" placeholder="p. ej. Daft Punk Discovery — o pega un enlace de Spotify">
+              <label for="search-input">Título, álbum, artista o enlace de Spotify / YouTube Music</label>
+              <input id="search-input" type="text" placeholder="p. ej. Daft Punk Discovery — o pega un enlace de Spotify o YouTube Music">
             </div>
             <button id="search-button" type="submit" title="Buscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
           </form>
@@ -267,6 +270,10 @@
           <div class="queue-header">
             <h2 id="queue-title">Estado de la cola</h2>
             <div class="queue-head-right">
+              <label class="workers-setting" title="Cuántos trabajos de la cola se descargan a la vez">
+                Simultáneas
+                <select id="workersSelect" aria-label="Descargas simultáneas"></select>
+              </label>
               <span class="pager">
                 <button id="queuePrev" class="action-button secondary" type="button" title="Anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
                 <span id="queuePageInfo" class="muted small">-</span>
@@ -428,7 +435,7 @@
 
     function getFallbackTitle(item) {
       if (item.metadata_status === "PENDING" || item.metadata_status === "FETCHING") {
-        return "Leyendo Spotify...";
+        return isYouTubeUrl(item.url) ? "Leyendo YouTube Music..." : "Leyendo Spotify...";
       }
 
       return getTypeLabel(item.metadata_type);
@@ -479,7 +486,7 @@
       link.href = item.url;
       link.target = "_blank";
       link.rel = "noreferrer";
-      link.textContent = "Abrir en Spotify";
+      link.textContent = isYouTubeUrl(item.url) ? "Abrir en YouTube Music" : "Abrir en Spotify";
 
       body.append(title, meta, link);
       wrapper.appendChild(body);
@@ -983,11 +990,49 @@
       return `${n} ${singular}${n === 1 ? "" : "s"}`;
     }
 
+    // ---- Descargas simultaneas ----
+    const workersSelect = document.querySelector("#workersSelect");
+
+    function syncWorkersSelect(config) {
+      const max = Number(config.download_workers_max || 0);
+      const value = Number(config.download_workers || 0);
+      if (!max || !value) return;
+      if (workersSelect.options.length !== max) {
+        workersSelect.replaceChildren(...Array.from({ length: max }, (_, i) => new Option(String(i + 1), String(i + 1))));
+      }
+      // No pisar la eleccion mientras el usuario esta cambiandola.
+      if (document.activeElement !== workersSelect && !workersSelect.disabled) {
+        workersSelect.value = String(value);
+      }
+    }
+
+    workersSelect.addEventListener("change", async () => {
+      const value = Number(workersSelect.value);
+      workersSelect.disabled = true;
+      try {
+        const response = await fetch(`${API_BASE}/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ download_workers: value }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo guardar.");
+        setMessage(`Descargas simultáneas: ${data.download_workers}.`);
+      } catch (e) {
+        setMessage(e.message, true);
+      } finally {
+        workersSelect.disabled = false;
+        workersSelect.blur();
+        loadStatus().catch(() => {});
+      }
+    });
+
     async function loadStatus() {
       const response = await fetch(`${API_BASE}/status?page=${queuePage}&per_page=${QUEUE_PER_PAGE}`, { cache: "no-store" });
       if (!response.ok) throw new Error("No se pudo cargar la cola.");
       const data = await response.json();
       maxAttempts = data.config?.spotdl_max_attempts || maxAttempts;
+      syncWorkersSelect(data.config || {});
       queuePage = data.page || 1;
       const totalPages = data.total_pages || 1;
       renderItems(data.items || []);      // tabla (escritorio)
@@ -1223,6 +1268,14 @@
       return /open\.spotify\.com\/|^spotify:/i.test(text);
     }
 
+    function isYouTubeUrl(text) {
+      return /^https?:\/\/([a-z]+\.)?(youtube\.com|youtu\.be)\//i.test(text || "");
+    }
+
+    function looksLikeDownloadUrl(text) {
+      return looksLikeSpotifyUrl(text) || isYouTubeUrl(text);
+    }
+
     async function enqueueUrl(url) {
       const response = await fetch(`${API_BASE}/add`, {
         method: "POST",
@@ -1309,8 +1362,8 @@
       const q = searchInput.value.trim();
       if (!q) return;
       searchButton.disabled = true;
-      // Si pegan un enlace de Spotify, se encola directamente (va a Descargas).
-      if (looksLikeSpotifyUrl(q)) {
+      // Si pegan un enlace de Spotify o YouTube Music, se encola directamente (va a Descargas).
+      if (looksLikeDownloadUrl(q)) {
         try {
           const data = await enqueueUrl(q);
           setSearchMessage(`Enlace añadido como descarga #${data.id}. Míralo en Descargas.`);

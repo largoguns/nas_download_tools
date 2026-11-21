@@ -203,17 +203,20 @@ Herramientas y destino:
 
 Aplicacion web ligera en Python/Flask para pegar una URL de Spotify, encolarla en SQLite y ejecutar `spotdl` en segundo plano para descargar audio MP3 a 192 kbps.
 
+Tambien acepta enlaces de YouTube Music (cancion o playlist/album), que se descargan directamente con yt-dlp (`ytmusic.py`, como subproceso cancelable) sin pasar por el emparejado de spotdl.
+
 ### Restricciones
 
-- Debe seguir siendo apta para Raspberry Pi 3B.
+- Se despliega en una NAS (Portainer). Con 1 worker debe seguir funcionando en equipos modestos.
 - No usar Celery, Redis, RabbitMQ ni colas pesadas.
-- Procesar descargas de forma estrictamente secuencial en un unico worker de fondo.
+- Las descargas se procesan con un pool de workers (`threading`) de tamano configurable: `DOWNLOAD_WORKERS` (inicial, por defecto 5) y ajustable en caliente desde la interfaz (tabla `settings` de SQLite), con tope `DOWNLOAD_WORKERS_MAX`. Los trabajos se reservan con `BEGIN IMMEDIATE` para que dos workers no cojan el mismo.
 - Los archivos descargados se guardan en el volumen `/music`.
 - Eliminar registros desde la interfaz solo borra filas de SQLite, nunca archivos fisicos.
 
 ### Archivos principales
 
 - `spotube_downloader/app.py`: backend Flask, SQLite, workers y ejecucion de `spotdl`.
+- `spotube_downloader/ytmusic.py`: descarga directa de enlaces de YouTube Music con yt-dlp (helpers + ejecutable que emite eventos `@@YTM`).
 - `spotube_downloader/templates/index.html`: interfaz web.
 - `spotube_downloader/requirements.txt`: dependencias Python.
 - `spotube_downloader/Dockerfile`: imagen del descargador de musica.
@@ -242,7 +245,8 @@ Variables importantes:
 - `MUSIC_HOST_DIR`: carpeta host montada como `/music`, por defecto `./music`.
 - `SPOTDL_COOKIE_HOST_DIR`: carpeta host montada como `/cookies`, por defecto `./cookies_store`.
 - `SPOTDL_AUDIO_PROVIDERS`: por defecto `youtube-music,youtube`.
-- `SPOTDL_THREADS`: mantener bajo en Raspberry Pi.
+- `SPOTDL_THREADS`: canciones en paralelo dentro de un trabajo de spotdl (no son descargas simultaneas de la cola).
+- `DOWNLOAD_WORKERS`: trabajos de la cola a la vez (valor inicial; se cambia desde la interfaz).
 - `SPOTDL_REPROCESS_MISSING_ONLY`: por defecto recomendado `false` en Raspberry Pi.
 - `SPOTDL_COOKIE_FILE`: archivo Netscape de cookies montado bajo `/cookies` si YouTube lo requiere.
 
@@ -370,6 +374,6 @@ Variables importantes:
 - No anadir dependencias pesadas sin necesidad.
 - No borrar archivos descargados desde las acciones de historial/cola.
 - Antes de cambiar una fuente de anime, comprobar que hereda de `BaseAnimeSource`.
-- Antes de cambiar Spotube-Downloader, comprobar que el worker sigue siendo secuencial.
+- Antes de cambiar Spotube-Downloader, comprobar que el codigo del worker sigue siendo seguro con varios workers a la vez (estado por trabajo, nada global sin lock).
 - Antes de cambiar Telegram-Downloader, comprobar que el worker sigue siendo secuencial, que el cliente Pyrogram vive en su propio event loop (`tg_client.py`) y que la interaccion con bots sigue siendo por polling del historial (no modo updates).
 - Si se introduce una nueva herramienta, crear su carpeta propia y documentar sus comandos Docker.

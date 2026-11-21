@@ -5,6 +5,7 @@ import re
 import signal
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -19,6 +20,7 @@ from flask import Flask, jsonify, render_template, request
 
 import deezer
 import navidrome
+import ytmusic
 
 
 def parse_int_env(name, default, minimum=None):
@@ -93,6 +95,19 @@ SPOTDL_SPOTIFY_MAX_RETRIES = parse_int_env("SPOTDL_SPOTIFY_MAX_RETRIES", 5, mini
 SPOTDL_SAVE_TIMEOUT_SECONDS = parse_int_env("SPOTDL_SAVE_TIMEOUT_SECONDS", 60, minimum=30)
 SPOTDL_COOKIE_FILE = os.environ.get("SPOTDL_COOKIE_FILE", "").strip()
 SPOTDL_YT_DLP_ARGS = os.environ.get("SPOTDL_YT_DLP_ARGS", "").strip()
+# Runtime JS que yt-dlp necesita para YouTube. `spotdl --download-deno` lo deja
+# en ~/.config/spotdl/deno (ver Dockerfile); se puede forzar otra ruta.
+YTMUSIC_DENO_PATH = os.environ.get(
+    "YTMUSIC_DENO_PATH",
+    str(Path.home() / ".config" / "spotdl" / "deno"),
+).strip()
+YTMUSIC_SCRIPT = Path(__file__).resolve().parent / "ytmusic.py"
+# Descargas simultaneas (trabajos de la cola a la vez). El valor del entorno es
+# el inicial; desde la interfaz se cambia en caliente y se guarda en SQLite.
+DOWNLOAD_WORKERS_MAX = parse_int_env("DOWNLOAD_WORKERS_MAX", 10, minimum=1)
+DOWNLOAD_WORKERS_DEFAULT = min(
+    parse_int_env("DOWNLOAD_WORKERS", 5, minimum=1), DOWNLOAD_WORKERS_MAX
+)
 WORKER_SLEEP_SECONDS = parse_int_env("WORKER_SLEEP_SECONDS", 5, minimum=1)
 METADATA_WORKER_SLEEP_SECONDS = parse_int_env(
     "METADATA_WORKER_SLEEP_SECONDS",
@@ -137,6 +152,10 @@ NON_RETRYABLE_SPOTDL_ERRORS = (
     "require deno",
     "sign in to confirm",
     "not a bot",
+    # YouTube Music directo: el video no existe o es privado; reintentar no sirve.
+    "video unavailable",
+    "this video is not available",
+    "private video",
 )
 SPOTDL_ERROR_PATTERNS = (
     "audioprovidererror",
@@ -168,8 +187,9 @@ SPOTDL_TRACEBACK_MARKERS = (
 )
 
 app = Flask(__name__)
-_worker_thread = None
+_worker_threads = []
 _worker_lock = threading.Lock()
+_download_workers = DOWNLOAD_WORKERS_DEFAULT
 _metadata_thread = None
 _metadata_lock = threading.Lock()
 _active_processes = {}
@@ -299,6 +319,48 @@ def init_db():
                 ON download_tracks(download_id, position)
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+
+
+def load_download_workers():
+    """Lee el numero de descargas simultaneas guardado desde la interfaz."""
+    global _download_workers
+    with get_connection() as connection:
+        row = connection.execute(
+            "SELECT value FROM settings WHERE key = 'download_workers'"
+        ).fetchone()
+    if row is not None:
+        try:
+            _download_workers = min(max(int(row["value"]), 1), DOWNLOAD_WORKERS_MAX)
+        except ValueError:
+            pass
+    return _download_workers
+
+
+def get_download_workers():
+    return _download_workers
+
+
+def set_download_workers(value):
+    global _download_workers
+    value = min(max(int(value), 1), DOWNLOAD_WORKERS_MAX)
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO settings (key, value) VALUES ('download_workers', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (str(value),),
+        )
+    _download_workers = value
+    return value
 
 
 def reset_interrupted_downloads():
@@ -452,6 +514,8 @@ def fetch_spotify_oembed_metadata(url):
 
 
 def load_spotify_metadata(url):
+    if ytmusic.is_youtube_url(url):
+        return {key: value for key, value in ytmusic.fetch_metadata(url).items() if value}
     try:
         metadata = fetch_spotify_metadata(url)
     except Exception:
@@ -497,7 +561,11 @@ def is_valid_spotify_url(value):
 
 def enqueue_download(url):
     now = utc_now()
-    metadata_type = get_spotify_item_type(url)
+    if ytmusic.is_youtube_url(url):
+        url = ytmusic.normalize_url(url)
+        metadata_type = ytmusic.item_type(url)
+    else:
+        metadata_type = get_spotify_item_type(url)
     with get_connection() as connection:
         cursor = connection.execute(
             """
@@ -1736,7 +1804,134 @@ def lookup_target_matches_query(query, error):
     return bool(title_key) and title_key in target and artist_key in target
 
 
+def upsert_ytmusic_track(job_id, position, title, artist, url, status, error=None):
+    now = utc_now()
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO download_tracks (
+                download_id, position, title, artist, url, output_path,
+                status, error, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+            ON CONFLICT(download_id, position) DO UPDATE SET
+                title = excluded.title,
+                artist = COALESCE(excluded.artist, download_tracks.artist),
+                url = COALESCE(excluded.url, download_tracks.url),
+                status = excluded.status,
+                error = excluded.error,
+                updated_at = excluded.updated_at
+            """,
+            (
+                job_id, position, (title or f"Cancion {position}")[:500], artist, url,
+                status, error[-MAX_ERROR_LENGTH:] if error else None, now, now,
+            ),
+        )
+
+
+def handle_ytmusic_event(job_id, stats, event):
+    kind = event.get("event")
+    if kind == "item":
+        position = int(event.get("index") or 1)
+        total = int(event.get("total") or 1)
+        stats["expected_count"] = total
+        stats["current"] = event
+        label = " - ".join(part for part in (event.get("artist"), event.get("title")) if part)
+        upsert_ytmusic_track(
+            job_id, position, event.get("title"), event.get("artist"), event.get("url"),
+            "DOWNLOADING",
+        )
+        update_job_progress(job_id, current=position - 1, total=total, title=label)
+    elif kind == "done":
+        current = stats.get("current") or {}
+        position = int(event.get("index") or current.get("index") or 1)
+        stats["success_count"] += 1
+        stats["current"] = None
+        upsert_ytmusic_track(
+            job_id, position, event.get("title"), event.get("artist"), current.get("url"),
+            "COMPLETED",
+        )
+        update_job_progress(
+            job_id, current=position, total=stats.get("expected_count") or position, title=None,
+        )
+    elif kind == "error":
+        current = stats.get("current")
+        if current:
+            stats["current"] = None
+            upsert_ytmusic_track(
+                job_id, int(current.get("index") or 1), current.get("title"),
+                current.get("artist"), current.get("url"), "FAILED", event.get("message"),
+            )
+
+
+def run_ytmusic(job_id, url):
+    """Descarga directa de un enlace de YouTube Music con yt-dlp (ver ytmusic.py).
+
+    Devuelve lo mismo que ``run_spotdl`` para reutilizar reintentos y estados.
+    """
+    stats = new_spotdl_stats()
+    stats["current"] = None
+    command = [
+        sys.executable,
+        str(YTMUSIC_SCRIPT),
+        url,
+        "--output-dir", MUSIC_DIR,
+        "--format", SPOTDL_FORMAT,
+        "--bitrate", SPOTDL_BITRATE,
+    ]
+    if SPOTDL_COOKIE_FILE and Path(SPOTDL_COOKIE_FILE).is_file():
+        command.extend(["--cookies", SPOTDL_COOKIE_FILE])
+    if YTMUSIC_DENO_PATH and Path(YTMUSIC_DENO_PATH).is_file():
+        command.extend(["--deno", YTMUSIC_DENO_PATH])
+
+    update_job_progress(job_id, title="Leyendo YouTube Music")
+    app.logger.info("Iniciando yt-dlp #%s: %s", job_id, url)
+    output_tail = deque(maxlen=80)
+    error_tail = deque(maxlen=24)
+    process = None
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+        register_active_process(job_id, process)
+        for line in process.stdout:
+            line = line.rstrip()
+            if not line:
+                continue
+            if line.startswith(ytmusic.EVENT_PREFIX):
+                try:
+                    event = json.loads(line[len(ytmusic.EVENT_PREFIX):])
+                except ValueError:
+                    continue
+                handle_ytmusic_event(job_id, stats, event)
+                if event.get("event") == "error":
+                    message = f"ERROR: {event.get('message')}"
+                    error_tail.append(message)
+                    app.logger.warning("yt-dlp #%s: %s", job_id, message)
+                elif event.get("event") == "done":
+                    app.logger.info("yt-dlp #%s: descargada %s", job_id, event.get("path"))
+                continue
+            output_tail.append(line)
+            if is_transient_spotdl_error(line):
+                stats["had_transient_error"] = True
+
+        return_code = process.wait()
+        output = "\n".join(list(error_tail)[-12:]) or "\n".join(output_tail)
+        return return_code, output, stats
+    finally:
+        if process is not None:
+            unregister_active_process(job_id, process)
+
+
 def run_spotdl(job_id, url, missing_only=False, previous_error=None):
+    if ytmusic.is_youtube_url(url):
+        return run_ytmusic(job_id, url)
+
     stats = new_spotdl_stats()
     query = url
     missing_file = None
@@ -1983,11 +2178,17 @@ def process_job(job):
         app.logger.exception("Error procesando la descarga #%s", job["id"])
 
 
-def worker_loop():
-    # Un unico hilo procesa la cola secuencialmente para no saturar la Raspberry Pi.
-    app.logger.info("Worker de descargas iniciado")
+def worker_loop(index):
+    # Hay un pool fijo de DOWNLOAD_WORKERS_MAX hilos; solo trabajan los que estan
+    # por debajo del limite configurado. Asi el limite se cambia en caliente: al
+    # bajarlo, los hilos sobrantes terminan su descarga actual y se quedan ociosos.
+    app.logger.info("Worker de descargas %s iniciado", index + 1)
     while True:
         try:
+            if index >= get_download_workers():
+                time.sleep(WORKER_SLEEP_SECONDS)
+                continue
+
             job = claim_next_job()
             if job is None:
                 time.sleep(WORKER_SLEEP_SECONDS)
@@ -2011,11 +2212,11 @@ def metadata_worker_loop():
             try:
                 metadata = load_spotify_metadata(job["url"])
                 finish_metadata_job(job["id"], metadata)
-                app.logger.info("Metadatos Spotify actualizados: #%s", job["id"])
+                app.logger.info("Metadatos actualizados: #%s", job["id"])
             except Exception as exc:
                 finish_metadata_job(job["id"], {}, error=str(exc))
                 app.logger.warning(
-                    "No se pudieron obtener metadatos Spotify para #%s: %s",
+                    "No se pudieron obtener metadatos para #%s: %s",
                     job["id"],
                     exc,
                 )
@@ -2025,18 +2226,19 @@ def metadata_worker_loop():
 
 
 def start_worker_once():
-    global _worker_thread
-
     with _worker_lock:
-        if _worker_thread and _worker_thread.is_alive():
+        if _worker_threads:
             return
 
-        _worker_thread = threading.Thread(
-            target=worker_loop,
-            name="spotdl-worker",
-            daemon=True,
-        )
-        _worker_thread.start()
+        for index in range(DOWNLOAD_WORKERS_MAX):
+            thread = threading.Thread(
+                target=worker_loop,
+                args=(index,),
+                name=f"download-worker-{index + 1}",
+                daemon=True,
+            )
+            thread.start()
+            _worker_threads.append(thread)
 
 
 def start_metadata_worker_once():
@@ -2066,8 +2268,10 @@ def add_download():
     payload = request.get_json(silent=True) or request.form
     url = (payload.get("url") or "").strip()
 
-    if not is_valid_spotify_url(url):
-        return jsonify({"ok": False, "error": "Introduce un enlace valido de Spotify."}), 400
+    if not (is_valid_spotify_url(url) or ytmusic.is_youtube_url(url)):
+        return jsonify(
+            {"ok": False, "error": "Introduce un enlace valido de Spotify o YouTube Music."}
+        ), 400
 
     download_id = enqueue_download(url)
     return jsonify({"ok": True, "id": download_id, "status": "PENDING"}), 201
@@ -2149,9 +2353,24 @@ def status():
                 "spotdl_retry_max_delay_seconds": SPOTDL_RETRY_MAX_DELAY_SECONDS,
                 "spotdl_retry_all_failures": SPOTDL_RETRY_ALL_FAILURES,
                 "spotdl_save_timeout_seconds": SPOTDL_SAVE_TIMEOUT_SECONDS,
+                "download_workers": get_download_workers(),
+                "download_workers_max": DOWNLOAD_WORKERS_MAX,
             },
         }
     )
+
+
+@app.post("/settings")
+def update_settings():
+    payload = request.get_json(silent=True) or {}
+    if "download_workers" not in payload:
+        return jsonify({"ok": False, "error": "Nada que guardar."}), 400
+    try:
+        value = set_download_workers(payload["download_workers"])
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Valor no valido."}), 400
+    app.logger.info("Descargas simultaneas: %s", value)
+    return jsonify({"ok": True, "download_workers": value})
 
 
 @app.post("/retry/<int:download_id>")
@@ -2208,6 +2427,7 @@ def delete_download(download_id):
 
 
 init_db()
+load_download_workers()
 reset_interrupted_downloads()
 start_worker_once()
 start_metadata_worker_once()
